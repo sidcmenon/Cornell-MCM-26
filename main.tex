@@ -1,0 +1,170 @@
+\documentclass[14pt]{article}
+
+% ---------- Layout & fonts ----------
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.1}
+
+% ---------- Math, figures, tables ----------
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{caption,subcaption}
+\usepackage{float}
+
+% ---------- Header with page count ----------
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\rhead{Page \thepage\ of \pageref*{LastPage}}
+
+% ---------- Citations ----------
+\usepackage[backend=biber,style=numeric-comp,sorting=none]{biblatex}
+\addbibresource{refs.bib}
+
+% ---------- Links & smart references (load last) ----------
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=green!40!black,urlcolor=blue!60!black]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+% ---------- Theorem-style environments ----------
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+
+% ---------- Fill these in ----------
+\newcommand{\papertitle}{Inconvenient Intermissions}
+
+\begin{document}
+
+% ================= COVER PAGE =================
+\begin{titlepage}
+  \thispagestyle{empty}
+  \centering
+  \vspace*{2.5cm}
+  {\huge\bfseries \papertitle\par}
+  \vspace{1.5cm}
+  {\large
+    Roc Michel \quad Siddharth Menon \quad Peter Olhava\par
+    \vspace{0.4cm}
+    Cornell University\par
+  }
+  \vspace{0.8cm}
+  {\large November 9, 2026}
+  \vfill
+  \begin{minipage}{0.85\textwidth}
+    \section*{Abstract}
+    One-page summary: the problem, your modeling approach, key results,
+    and main recommendation. Write this last.
+
+  \end{minipage}
+  \vfill
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ================= BODY =================
+\section{Introduction}
+\subsection{Background}
+Seating 1,329, Bailey Hall is Cornell's largest auditorium(source) With such large capacity comes a greater risk for crowd collapses and crushes. While New York state, Ithaca, and Cornell(source) enforce regulations and evacuation protocols to mitigate these risks, the presence of an emergency like a fire or invader can lead to crowd dynamics which are difficult to predict and control. In order to best ensure safety of Bailey patrons, we must understand how these dynamics arise at an individual and collective level.
+\subsection{Problem Restatement}
+\subsection{Literature Review}
+Fortunate for us, there is already a large existing literature on Crowd analysis. Various authors have considered both discrete (source) and continuous (source) approaches to modeling the dynamics of large crowds. Of particular interest to us where papers on Floor Field Cellular Automata (FFCA) models  (source), and (continuous source).
+
+We found the FFCA framework to be useful because it allowed us to model the evolution of a threat, collective interests and individual decision making all at once. In this framework, a space (floor) is modeled as a grid. Static and dynamic fields over this grid carry information about things like proximity to an exit, or fire, traversability and previous use. Individuals are modeled as cells, who occupy a space on the grid and make a decision about where to move at every timestep based on their own characteristics and the various fields in use.
+
+\subsection{Our Approach}
+We developed two complementary models. One based on the FFCA framework described above, and another dynamical system which models how crowd density and "threat" (from a fire or invader) develop throughout the duration of an emergency.
+
+\section{Assumptions and Justifications}
+\begin{assumption}\label{as:optimal}
+ Our first assumption is that behave approximately optimal. Need justification something about evolutionary biology
+ \end{assumption}
+\begin{assumption}\label{as:consistent}
+ Our second assumption is that in the event of an emergency peoples behavior is consistent with their behavior in the absence of an emergency.
+ In our context this means that the ratios of the preference weights $k_S, k_T$ and $k_D$ don't change when we introduce
+ the preference weight $k_F$ corresponding to the fire dynamic field. (There's something on the wiki to justify this)
+\end{assumption}
+\begin{assumption}\label{as:accesibility}
+  Our third assumption is that every Bailey patron is able bodied. The reasoning behind this assumption is that accounting for
+  wheelchair accesibility would add complexity to our model(can probably justify this better)
+\end{assumption}
+\begin{assumption}\label{as:second}
+  Our fourth assumption is that every Bailey patron is seated on the first floor.
+\end{assumption}
+\begin{assumption}\label{as:chairs}
+  Our fifth assumption is that every chair in Bailey is .43 meters by .43 meters.
+\end{assumption}
+\begin{assumption}\label{as:speed}
+  Our sixth assumption is that every Bailey patron moves at the same speed.
+\end{assumption}
+\begin{assumption}\label{as:pathfinding}
+  Our seventh assumption
+\end{assumption}
+
+\section{Notation}
+
+
+\section{Model}
+\subsection{FFCA}
+
+
+As shown in \cref{eq:model}, and following \cite{example2020}, ...
+\begin{equation}\label{eq:model}
+  x_{t+1} = x_t + \beta x_t (1 - x_t).
+\end{equation}
+\subsubsection{Baseline Model}
+In our FFCA model, we start by rendering the first floor of Bailey hall as a (n) by (n) grid of .43 meter by .43 meter cells.
+We chose this cell size based on (x) which suggest that the average human occupies an area of .43 meters by .43 meters (source to justify).
+We then assign one of six types to each grid cell: chair, legroom, aisle, wall, access and exit. Based on these types we create a distance static field $SD$ and traversability static field $ST$, defined by
+
+$$SD_{ij} = \text{ Need to explain this}$$
+$$ST_{ij} = \begin{cases}
+    T_{\text{chair}} \text{ if cell (i,j) is type chair}\\
+    T_{\text{legroom}} \text{ if cell (i,j) is type legroom}\\
+    T_{\text{aisle}} \text{ if cell (i,j) is type aisle}\\
+    T_{\text{wall}} \text{ if cell (i,j) is type wall}\\
+    T_{\text{access}} \text{ if cell (i,j) is type access}
+    T_{\text{exit}} \text{ if cell (i,j) is type exit}
+\end{cases}$$
+The idea here is that $SD$ incorporates information about proximity to the nearest exit or access point, and that $ST$ incorporates information about how difficult it is to traverse across different types of grid cells.
+
+
+Next, we define a dynamic field $D$ as follows. During a given time step, if an automata (patron) exits cell $(i,j)$ we increment $D_{ij}$ by one unit. Then, after every automata has attempted to move. With probability $\delta$, a cell value $D_{ij}$ ``decays"
+
+
+\subsubsection{Crowd Preference Dynamic Field}
+\subsubsection{Fire Dynamic Field}
+\subsubsection{Usher Static Field}
+\subsubsection{Combinatorial Optimization}
+
+
+\section{Results}
+\subsection{FFCA}
+\subsubsection{Baseline model}
+\subsubsection{Crowd Preference Dynamic Field}
+\subsubsection{Fire Dynamic Field}
+\subsubsection{Usher Static Field}
+\subsubsection{Combinatorial Optimization}
+
+
+\section{Sensitivity Analysis}
+\subsection{FFCA}
+\section{Strengths and Weaknesses}
+diagonal movement
+second floor
+wheelchair accesibility
+\section{Conclusion}
+
+\printbibliography[heading=bibintoc]
+
+\appendix
+\section{Code}
+
+\end{document}
