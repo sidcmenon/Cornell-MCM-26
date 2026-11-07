@@ -21,7 +21,6 @@ import numpy as np
 # PARAMETERS
 # ----------------------------------------------------------------------------
 IN, FT = 0.0254, 0.3048
-
 ROW_PITCH = 34 * IN            # 2'-10" = 0.864 m
 CELL = ROW_PITCH / 2           # 0.432 m, so one row = legroom band + seat band
 
