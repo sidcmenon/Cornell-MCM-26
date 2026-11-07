@@ -13,13 +13,13 @@ because the model caps the flow through each one (see continuum.py).
 All corridor, foyer and door dimensions below are rough estimates read off the
 first-floor plan (scale from the 31 m auditorium width); replace with measurements.
 
-funnels=True adds V-shaped barriers on the orchestra side of each access point.
+barricades=<name> adds the wall segments listed under that name in BARRICADES.
 """
 
 import numpy as np
 from scipy import ndimage
 
-from bailey_grid import (ACCESS, ACCESS_WIDTH, AISLE, DOOR_WIDTH, EXIT, HALF_WIDTH,
+from bailey_grid import (ACCESS, AISLE, DOOR_WIDTH, LEGROOM, EXIT, HALF_WIDTH,
                          LOGE_CENTER_Y, OUTER_R, STAGE_Y, WALL, build_grid)
 
 DOOR, OUT = 6, 7               # new cell types (bailey_grid uses 0..5)
@@ -31,11 +31,34 @@ FOYER_DOOR_X, FOYER_DOOR_W = [-6.0, 0.0, 6.0], 1.8      # corridor -> foyer
 FRONT_DOOR_X, FRONT_DOOR_W = [-8.0, -4.0, 0.0, 4.0, 8.0], 1.5   # foyer -> outside
 PORTICO_PHI, PORTICO_DOOR_W = [-75.0, -40.0, 40.0, 75.0], 1.2   # corridor -> portico
 
-FUNNEL_LEN = 1.5               # m, length of each funnel wall
-FUNNEL_SPREAD = 35.0           # deg, how far each wall opens away from the opening's axis
+# The 6 orchestra -> mezzanine access points, measured on the seating chart (all are steps).
+# (x, y, width): x, y in bailey_grid coordinates (m), width in m.
+ACCESS_POINTS = [(-4.4, 16.4, 1.35), (4.4, 16.4, 1.35),   # tops of the two main aisles (4'-5")
+                 (-10.9, 9.6, 1.1), (10.9, 9.6, 1.1),     # stairs where the barrier turns straight
+                 (-10.9, 0.0, 1.05), (10.9, 0.0, 1.05)]   # steps by the stage up to the boxes
 
 
-def build_building(funnels=False):
+
+def across_corridor(phi_deg):
+    """Wall segment straight across the corridor at angle phi (deg from the axis)."""
+    t = np.radians(phi_deg)
+    r0, r1 = OUTER_R + 0.2, OUTER_R + 0.6 + CORR_W
+    return (r0 * np.sin(t), LOGE_CENTER_Y + r0 * np.cos(t),
+            r1 * np.sin(t), LOGE_CENTER_Y + r1 * np.cos(t))
+
+
+# Barricades: straight wall segments (x0, y0, x1, y1) in m, chosen by name.
+SIDE_AISLE_SPLIT = [(-9.3, 5.0, -10.8, 5.0), (9.3, 5.0, 10.8, 5.0)]   # front half -> stage steps
+BARRICADES = {
+    "none": [],
+    "corridor_45": [across_corridor(-45), across_corridor(45)],       # outer doors -> outer portico
+    "corridor_32": [across_corridor(-32), across_corridor(32)],       # outer 4 doors -> portico
+    "orchestra_split": SIDE_AISLE_SPLIT,
+    "corridor_45+split": [across_corridor(-45), across_corridor(45)] + SIDE_AISLE_SPLIT,
+}
+
+
+def build_building(barricades="none"):
     g = build_grid()
     cell = g["cell"]
 
@@ -70,10 +93,11 @@ def build_building(funnels=False):
     for k in range(1, 10):                                 # 9 mezzanine doors
         lab, _ = ndimage.label(g["grid"] == EXIT, np.ones((3, 3)))
         add(np.pad(lab == k, pad), DOOR_WIDTH)
-    lab, n = ndimage.label(g["grid"] == ACCESS, np.ones((3, 3)))
-    access = [np.pad(lab == k, pad) for k in range(1, n + 1)]
-    for m in access:                                       # 6 access points
-        add(m, ACCESS_WIDTH, ACCESS)
+    orch_ = orch & hall
+    barrier = ndimage.binary_dilation(orch_, np.ones((3, 3))) & hall & ~orch_
+    grid[grid == ACCESS] = WALL                            # drop bailey_grid's placeholders
+    for x0, y0, w in ACCESS_POINTS:                        # 6 measured access points
+        add(barrier & (np.hypot(X - x0, Y - y0) <= max(w / 2, cell)), w, ACCESS)
 
     grid[corridor | foyer] = AISLE
     for x0 in FOYER_DOOR_X:
@@ -88,18 +112,11 @@ def build_building(funnels=False):
         add(across & outer_wall & ~foyer, PORTICO_DOOR_W)
         grid[across & (d > 2 * cell + CORR_W) & (d <= 3 * cell + CORR_W)] = OUT
 
-    if funnels:
-        for m in access:
-            ax_, ay_ = X[m].mean(), Y[m].mean()
-            n_ = -np.array([ax_, ay_ - LOGE_CENTER_Y]); n_ /= np.hypot(*n_)  # into orchestra
-            t_ = np.array([n_[1], -n_[0]])
-            s = np.radians(FUNNEL_SPREAD)
-            for sign in (-1, 1):
-                p0 = np.array([ax_, ay_]) + sign * t_ * (ACCESS_WIDTH / 2 + cell / 2)
-                u = np.cos(s) * n_ + sign * np.sin(s) * t_
-                along = np.clip((X - p0[0]) * u[0] + (Y - p0[1]) * u[1], 0, FUNNEL_LEN)
-                dist = np.hypot(X - p0[0] - along * u[0], Y - p0[1] - along * u[1])
-                grid[(dist <= 0.75 * cell) & orch & ~occupied & (grid != ACCESS)] = WALL
+    for x0, y0, x1, y1 in BARRICADES[barricades]:
+        u = np.array([x1 - x0, y1 - y0]); L = np.hypot(*u); u /= L
+        along = np.clip((X - x0) * u[0] + (Y - y0) * u[1], 0, L)
+        dist = np.hypot(X - x0 - along * u[0], Y - y0 - along * u[1])
+        grid[(dist <= 0.75 * cell) & np.isin(grid, [AISLE, LEGROOM]) & ~occupied] = WALL
 
     return dict(grid=grid, occupied=occupied, orch=orch, xs=xs, ys=ys, cell=cell,
                 openings=openings)

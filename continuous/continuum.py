@@ -9,22 +9,26 @@ The crowd is a density rho(x, t) in people/m^2 that obeys
     |grad phi| = 1 / v_eik(rho, x),  phi = 0 outside   (phi = time to get out)
     d = -grad phi / |grad phi|                  (everyone walks the fastest route)
 
-Crowding enters in three places:
+Crowding enters in four places:
   1. Speed falls with density, separately for each cell type (Greenshields):
-         q(rho) = vf * rho * (1 - rho/RHO_MAX),   vf = V_FREE * T(type)
-     T is the traversability field from the CA (aisle 1.0, legroom 0.8, ...).
+         q(rho) = vf * rho * (1 - rho/RHO_MAX),   vf = V_FREE * T(type) * (1 - merge loss)
+     T is the traversability field from the CA (aisle 1.0, legroom 0.8, seat 0.1).
   2. Flow between two cells is min(demand of the sender, supply of the receiver)
      (Godunov / cell-transmission form). A packed aisle has little supply, so it is
      hard to enter; a packed legroom row has its demand capped, so it empties slowly.
-  3. Every opening (door or access point) passes at most DOOR_FLOW * width people/s.
-     That capacity drops when the crowd in front of it is packed AND has to squeeze in
-     from a wider area (clogging):
-         capacity = DOOR_FLOW * width * (1 - JAM_DROP * jam * squeeze)
+  3. Every opening passes at most FLOW * width people/s (DOOR_FLOW for doors,
+     STAIR_FLOW for the access-point steps). Capacity drops when the crowd in front is
+     packed AND has to squeeze in from a wider area (clogging):
+         capacity = FLOW * width * (1 - JAM_DROP * jam * squeeze)
          jam     = how far the density in front is above critical, 0..1
          squeeze = 1 - width / (width of open floor 2 cells upstream), 0..1
-     Funnel barriers lower `squeeze`. This clogging law is an assumption; JAM_DROP is
-     varied in the output because the benefit of funnels depends on it.
+  4. Merging / crossing streams: where people converge from different directions, the
+     local walking speed drops by up to MERGE_LOSS:
+         merge loss = MERGE_LOSS * (1 - |average direction|)   where streams converge
+     |average direction| (density-weighted over 3x3 cells) is 1 when everyone walks the
+     same way and 0 when streams meet head-on. Barricades help by keeping streams apart.
 
+JAM_DROP and MERGE_LOSS are assumptions; the output varies them.
 The grid is only the numerical mesh: halving DT should barely change results.
 
 Run:  python continuum.py            -> table of egress times, writes egress.png
@@ -40,21 +44,26 @@ from scipy import ndimage
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bailey_grid import AISLE, EXIT, LEGROOM, SEAT, WALL      # noqa: E402
-from traversability_field import traversability_field        # noqa: E402
-from building import OUT, build_building                      # noqa: E402
+from bailey_grid import ACCESS, AISLE, EXIT, LEGROOM, SEAT, WALL     # noqa: E402
+from traversability_field import TRAVERSABILITY, traversability_field  # noqa: E402
+from building import BARRICADES, OUT, build_building                   # noqa: E402
 
 # ----------------------------------------------------------------------------
 # PARAMETERS
 # ----------------------------------------------------------------------------
 V_FREE = 1.3        # m/s, free walking speed (Weidmann 1993: 1.34)
 RHO_MAX = 5.4       # people/m^2, jam density (Weidmann 1993)
-DOOR_FLOW = 1.3     # people/(m s), specific flow through an opening (SFPE handbook)
-JAM_DROP = 0.3      # max fraction of capacity lost to clogging
+DOOR_FLOW = 1.3     # people/(m s), specific flow through a door (SFPE handbook)
+STAIR_FLOW = 1.0    # people/(m s), specific flow on stairs (SFPE handbook)
+JAM_DROP = 0.3      # max fraction of an opening's capacity lost to clogging
+MERGE_LOSS = 0.3    # max fraction of walking speed lost where streams meet head-on
 V_EIK_MIN = 0.1     # route planning: a jammed cell still costs finite time
-PHI_EVERY = 1.0     # s, how often people re-plan (recompute phi)
+PHI_EVERY = 1.0     # s, how often people re-plan (recompute phi and merge loss)
 T_END = 900.0       # s, give up after this
 DONE = 0.5          # people left inside when we call it evacuated
+
+# access points are slow because of their capacity (STAIR_FLOW), not their walking speed
+T_VALUES = {**TRAVERSABILITY, ACCESS: 1.0}
 
 RHO_C = RHO_MAX / 2                       # critical density (max flow)
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]  # (dy, dx): east, west, north, south
@@ -97,40 +106,58 @@ def directions(phi):
             np.maximum(gy, 0) / norm, np.maximum(-gy, 0) / norm]
 
 
+def merge_conflict(rho, dirs):
+    """0..1: how much streams meet from different directions (only where they converge)."""
+    ux, uy = dirs[0] - dirs[1], dirs[2] - dirs[3]
+    mx = ndimage.uniform_filter(rho * ux, 3)
+    my = ndimage.uniform_filter(rho * uy, 3)
+    m = ndimage.uniform_filter(rho, 3)
+    order = np.hypot(mx, my) / np.maximum(m, 1e-9)
+    converging = (np.gradient(ux, axis=1) + np.gradient(uy, axis=0)) < 0
+    return np.where((m > 1e-3) & converging, np.clip(1 - order, 0, 1), 0.0)
+
+
 def opening_fronts(b, vf):
-    """For each opening: the floor in front of it (upstream, within 2 cells) and the
-    squeeze factor 1 - width / width of open floor 2 cells upstream."""
+    """For each opening: its flow per metre, the floor in front of it (upstream, within
+    2 cells), and the squeeze factor 1 - width / width of open floor 2 cells upstream."""
     phi = travel_time(vf, b)
     floor = np.isin(b["grid"], [AISLE, LEGROOM, SEAT])
     out = []
     for mask, width in b["openings"]:
+        flow = STAIR_FLOW if (b["grid"][mask] == ACCESS).all() else DOOR_FLOW
         up = floor & (phi > phi[mask].max())
         d1 = ndimage.binary_dilation(mask, SQ)
         d2 = ndimage.binary_dilation(d1, SQ)
         ring2 = d2 & ~d1 & up
         squeeze = np.clip(1 - width / max(ring2.sum() * b["cell"], 1e-9), 0, 1)
-        out.append((mask, width, d2 & up, squeeze))
+        out.append((mask, flow * width, d2 & up, squeeze))
     return out
 
 
-def simulate(funnels=False, dt=None, jam_drop=JAM_DROP):
-    b = build_building(funnels)
+def simulate(barricades="none", dt=None, jam_drop=JAM_DROP, merge_loss=MERGE_LOSS):
+    b = build_building(barricades)
     grid, cell = b["grid"], b["cell"]
     assert (grid[[0, -1], :] == WALL).all() and (grid[:, [0, -1]] == WALL).all()
     dt = dt or 0.5 * cell / V_FREE                     # CFL condition
 
-    vf = V_FREE * traversability_field(np.minimum(grid, EXIT))   # doors/outside = 1.0
+    vf0 = V_FREE * traversability_field(np.minimum(grid, EXIT), T_VALUES)  # doors/outside = 1
     out_ = grid == OUT
-    fronts = opening_fronts(b, vf)
+    fronts = opening_fronts(b, vf0)
 
     rho = initial_density(b)
     total = rho.sum() * cell**2
-    assert np.isfinite(travel_time(vf, b)[rho > 0]).all(), "someone is walled in"
+    assert np.isfinite(travel_time(vf0, b)[rho > 0]).all(), "someone is walled in"
     t, out, t_phi, history, snaps = 0.0, 0.0, -np.inf, [], {}
+    merge_map = np.zeros(grid.shape)
+    through = np.zeros(len(fronts))                    # people through each opening
+    last_used = np.zeros(len(fronts))                  # s, last time each carried 0.1 p/s
 
     while t < T_END and total - out > DONE:
         if t - t_phi >= PHI_EVERY - 1e-9:              # re-plan routes
-            dirs = directions(travel_time(vf * np.maximum(1 - rho / RHO_MAX, V_EIK_MIN), b))
+            dirs = directions(travel_time(vf0 * np.maximum(1 - rho / RHO_MAX, V_EIK_MIN), b))
+            conflict = merge_conflict(rho, dirs)
+            vf = vf0 * (1 - merge_loss * conflict)
+            merge_map += conflict * rho * PHI_EVERY
             t_phi = t
 
         demand = vf * np.minimum(rho, RHO_C) * (1 - np.minimum(rho, RHO_C) / RHO_MAX)
@@ -142,14 +169,17 @@ def simulate(funnels=False, dt=None, jam_drop=JAM_DROP):
                  for c, (dy, dx) in zip(dirs, DIRS)]
 
         # capacity of each opening, reduced by clogging
-        for mask, width, front, squeeze in fronts:
+        for k, (mask, full_cap, front, squeeze) in enumerate(fronts):
             jam = np.clip((rho[front].mean() - RHO_C) / (RHO_MAX - RHO_C), 0, 1)
-            cap = DOOR_FLOW * width * (1 - jam_drop * jam * squeeze) * dt
+            cap = full_cap * (1 - jam_drop * jam * squeeze) * dt
             entering = [nb(mask, dy, dx) & ~mask for dy, dx in DIRS]
             wanted = sum(f[e].sum() for f, e in zip(flows, entering))
             if wanted > cap:
                 for f, e in zip(flows, entering):
                     f[e] *= cap / wanted
+            through[k] += min(wanted, cap)
+            if min(wanted, cap) > 0.1 * dt:
+                last_used[k] = t
 
         # never send out more people than a cell holds
         sent = sum(flows) / cell**2
@@ -164,12 +194,12 @@ def simulate(funnels=False, dt=None, jam_drop=JAM_DROP):
         t += dt
 
         history.append((t, total - out, rho.max()))
-        for ts in (20, 60, 120):
+        for ts in (20, 60):
             if ts not in snaps and t >= ts:
                 snaps[ts] = rho.copy()
 
     return dict(b=b, history=np.array(history), snaps=snaps, total=total, dt=dt,
-                squeeze=[f[3] for f in fronts])
+                merge_map=merge_map, through=through, last_used=last_used)
 
 
 def summary(r):
@@ -185,15 +215,17 @@ def plot(runs, path=Path(__file__).with_name("egress.png")):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    r0 = runs["baseline"]
+    r0 = runs["none"]
     b, c = r0["b"], r0["b"]["cell"]
     ext = [b["xs"][0] - c / 2, b["xs"][-1] + c / 2, b["ys"][0] - c / 2, b["ys"][-1] + c / 2]
-    fig, axs = plt.subplots(1, len(r0["snaps"]) + 1, figsize=(5 * (len(r0["snaps"]) + 1), 5))
-    for ax, (ts, rho) in zip(axs, r0["snaps"].items()):
-        im = ax.imshow(np.ma.masked_where(b["grid"] == WALL, rho), origin="lower",
-                       extent=ext, cmap="inferno", vmin=0, vmax=RHO_MAX)
-        ax.set_title(f"baseline density, t = {ts} s"); ax.set_aspect("equal")
-    fig.colorbar(im, ax=axs[:-1], shrink=0.7, label="people / m$^2$")
+    walls = b["grid"] == WALL
+    panels = [(f"density, t = {ts} s", rho, "inferno", RHO_MAX) for ts, rho in r0["snaps"].items()]
+    panels.append(("merge conflict (time-summed)", r0["merge_map"], "viridis", None))
+    fig, axs = plt.subplots(1, len(panels) + 1, figsize=(5 * (len(panels) + 1), 5))
+    for ax, (title, a, cmap, vmax) in zip(axs, panels):
+        ax.imshow(np.ma.masked_where(walls, a), origin="lower", extent=ext, cmap=cmap,
+                  vmin=0, vmax=vmax)
+        ax.set_title(f"no barricades: {title}"); ax.set_aspect("equal")
     for name, r in runs.items():
         axs[-1].plot(r["history"][:, 0], r["history"][:, 1], label=name)
     axs[-1].axvline(180, ls="--", c="gray")
@@ -204,17 +236,18 @@ def plot(runs, path=Path(__file__).with_name("egress.png")):
 
 if __name__ == "__main__":
     runs = {}
-    print(f"{'run':28s} {'50% out':>8s} {'90% out':>8s} {'all out':>8s} {'peak rho':>9s}")
-    for jd in (0.0, JAM_DROP, 0.6):
-        for funnels in (False, True):
-            name = f"{'funnels' if funnels else 'baseline'}, JAM_DROP={jd}"
-            r = simulate(funnels, jam_drop=jd)
-            print(f"{name:28s} " + "{:7.0f}s {:7.0f}s {:7.0f}s {:9.2f}".format(*summary(r)))
-            if jd == JAM_DROP:
-                runs["funnels" if funnels else "baseline"] = r
-    print("access-point squeeze, baseline:", np.round(runs["baseline"]["squeeze"][9:15], 2))
-    print("access-point squeeze, funnels: ", np.round(runs["funnels"]["squeeze"][9:15], 2))
+    settings = [(0.0, 0.0), (JAM_DROP, MERGE_LOSS), (0.6, 0.6)]
+    print(f"{'barricades':14s} {'JAM_DROP':>8s} {'MERGE_LOSS':>10s} "
+          f"{'50% out':>8s} {'90% out':>8s} {'all out':>8s} {'peak rho':>9s}")
+    for jd, ml in settings:
+        for name in BARRICADES:
+            r = simulate(name, jam_drop=jd, merge_loss=ml)
+            print(f"{name:14s} {jd:8.1f} {ml:10.1f} "
+                  + "{:7.0f}s {:7.0f}s {:7.0f}s {:9.2f}".format(*summary(r)))
+            if (jd, ml) == (JAM_DROP, MERGE_LOSS):
+                runs[name] = r
     plot(runs)
     if "--dt-check" in sys.argv:
-        r = simulate(dt=runs["baseline"]["dt"] / 2)
-        print(f"{'baseline at dt/2':28s} " + "{:7.0f}s {:7.0f}s {:7.0f}s {:9.2f}".format(*summary(r)))
+        r = simulate(dt=runs["none"]["dt"] / 2)
+        print(f"{'none, dt/2':14s} {JAM_DROP:8.1f} {MERGE_LOSS:10.1f} "
+              + "{:7.0f}s {:7.0f}s {:7.0f}s {:9.2f}".format(*summary(r)))
