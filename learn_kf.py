@@ -40,15 +40,15 @@ CONFIG = dict(
     head_start=0,       # fire ticks before evacuation starts
     T=2000,
     # objective and search
-    lam=0.1, t_ref=150.0,
+    lam=0.1, t_ref=174.0,
     n_reps=50,
     base_seed=7,
 )
 M_VALUES = np.array([0.0, 0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0])
 
-# calibrate_spread.py at s = 8: fire ticking with probability 0.166 per step engulfs in a median
+# calibrate_spread.py at s = 8: fire ticking with probability 0.156 per step engulfs in a median
 # 180 s. q scales the fire's time linearly, so any target engulf time T needs
-Q_AT_180 = 0.166
+Q_AT_180 = 0.156
 
 
 def fire_tick_prob(cfg):
