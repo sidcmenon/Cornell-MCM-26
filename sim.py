@@ -6,7 +6,10 @@ Per time step (parallel update):
   1. each agent scores its 9 Moore moves (including staying put):
          log w = k_D * D[target] - k_S * d[target]
      where d = BFS step-distance to the nearest exit (diagonal step = 1) and D is
-     the dynamic field. Blocked: walls, seat cells (unless seats_passable), cells
+     the dynamic field. (distance_field.py instead counts a diagonal as sqrt 2 and is
+     used only for the bailey_fields.png figure; the simulator and all saved results
+     use this diagonal = 1 distance, which matches one diagonal move = one time step.)
+     Blocked: walls, seat cells (unless seats_passable), cells
      occupied at the start of the step, cells that cannot reach an exit, and
      diagonal steps that cut a wall corner (unless cut_corners).
   2. each agent samples a move from the softmax of those scores

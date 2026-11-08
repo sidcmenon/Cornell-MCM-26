@@ -11,6 +11,10 @@ in them still need a value: a seat gets the smallest S + step cost over its trav
 neighbours (the step out of the chair). Walls, and anything with no route out, are inf.
 
 Because the barrier is a wall, orchestra paths automatically go through the access points.
+
+Note: sim.py and fire_sim.py compute their own distance with every step (diagonal too)
+costing 1, because one diagonal move takes one time step there. This file's field is
+the true walking distance, used for build_fields.py / bailey_fields.png.
 """
 
 import heapq

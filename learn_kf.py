@@ -34,7 +34,7 @@ CONFIG = dict(
     ell=8,              # fire sensing range, cells
     T_engulf=360.0,     # target median engulf time, seconds (sets fire speed)
     fire_kwargs=dict(ignite_odds=30, burn_odds=60, difficulty=2,
-                     spread_scale=8.0),   # from calibrate_s.py: ~95% of ignitions take hold
+                     spread_scale=8.0),   # from calibrate_spread.py: ~95% of ignitions take hold
     burn_time=5.0,      # seconds in fire before becoming a casualty
     dt=0.36,            # seconds per step
     head_start=0,       # fire ticks before evacuation starts
@@ -46,7 +46,7 @@ CONFIG = dict(
 )
 M_VALUES = np.array([0.0, 0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0])
 
-# calibrate_s.py at s = 8: fire ticking with probability 0.166 per step engulfs in a median
+# calibrate_spread.py at s = 8: fire ticking with probability 0.166 per step engulfs in a median
 # 180 s. q scales the fire's time linearly, so any target engulf time T needs
 Q_AT_180 = 0.166
 

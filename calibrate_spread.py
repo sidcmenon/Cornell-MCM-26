@@ -16,7 +16,7 @@ C(t) (fraction of non-wall cells that have caught fire) and its final value C_fi
 Then q = (median engulf ticks over established fires) * DT / T_TARGET, which makes the
 median engulf time T_TARGET seconds when the fire ticks with probability q per step.
 
-    python calibrate_s.py
+    python calibrate_spread.py
 Pick an s with high establishment and coverage, and put s and its q into learn_kf.py.
 """
 
