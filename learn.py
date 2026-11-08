@@ -22,6 +22,7 @@ CONFIG = dict(
     mu=0.3, alpha=0.3, delta=0.3,
     cut_corners=False, seats_passable=False, winner="weighted", include_seats=False,
     door_cap=1,      # max agents through one door per step (None = unlimited)
+    door_q=0.6,      # prob. a door admits anyone in a step; mean flow = door_q * door_cap
     T=2000,          # step cap; keep well above the typical evacuation time
     fill=1.0,        # fraction of chairs occupied (subset redrawn per replicate)
     n_reps=20,       # replicates per grid point
@@ -43,7 +44,7 @@ def evaluate(point):
     sim = EvacSim(_S["grid"], k_S, k_D, mu=cfg["mu"], alpha=cfg["alpha"], delta=cfg["delta"],
                   cut_corners=cfg["cut_corners"], seats_passable=cfg["seats_passable"],
                   winner=cfg["winner"], include_seats=cfg["include_seats"],
-                  door_cap=cfg["door_cap"], static=_S["static"])
+                  door_cap=cfg["door_cap"], door_q=cfg["door_q"], static=_S["static"])
     seats = _S["seats"]
     n = int(round(cfg["fill"] * len(seats)))
     out = []

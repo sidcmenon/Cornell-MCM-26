@@ -12,9 +12,9 @@ Per time step (parallel update):
   2. each agent samples a move from the softmax of those scores
   3. conflicts (2+ agents targeting the same cell): with probability mu nobody
      moves; otherwise one winner moves (chosen with weight p, or uniformly)
-  3b. door capacity: at most door_cap agents may step onto the cells of any one
-     door (connected group of exit cells) per step; extra agents stay put,
-     survivors chosen with weight p or uniformly
+  3b. door capacity: each door (connected group of exit cells) admits anyone this
+     step with probability door_q, and then at most door_cap agents; extra agents
+     stay put, survivors chosen with weight p or uniformly
   4. movers deposit +1 dynamic field on the cell they left
   5. agents that stepped onto an exit cell are removed
   6. dynamic field diffuses and decays
@@ -110,12 +110,16 @@ def build_static(grid, seats_passable=False, cut_corners=False):
 class EvacSim:
     def __init__(self, grid, k_S, k_D, mu=0.0, alpha=0.3, delta=0.3,
                  cut_corners=False, seats_passable=False, winner="weighted",
-                 include_seats=False, door_cap=1, static=None):
+                 include_seats=False, door_cap=1, door_q=0.6, static=None):
         """grid: 2D array of bailey_grid cell types.
         k_S, k_D: static / dynamic field weights (the parameters being learned).
         mu: friction. alpha, delta: dynamic-field diffusion and decay.
         winner: "weighted" (by move probability) or "uniform" conflict resolution.
         door_cap: max agents entering one door per step (None = unlimited).
+        door_q: probability a door admits anyone in a given step, so mean door
+            throughput is door_q * door_cap per step. With 0.432 m cells and a
+            ~0.32 s step, door_q = 0.6, door_cap = 1 gives ~1.9 people/s through a
+            1.3 m door (~1.4 people/m/s), in the measured bottleneck range.
         static: precomputed build_static(...) output (pass it when sweeping k)."""
         if winner not in ("weighted", "uniform"):
             raise ValueError("winner must be 'weighted' or 'uniform'")
@@ -125,6 +129,9 @@ class EvacSim:
         self.k_S, self.k_D, self.mu = k_S, k_D, mu
         self.winner = winner
         self.door_cap = door_cap
+        if not 0.0 < door_q <= 1.0:
+            raise ValueError("door_q must lie in (0, 1]")
+        self.door_q = door_q
         self.door_id = door_labels(exits)
         self.field = DynamicField(grid, alpha, delta, include_seats)
         self._d_safe = np.where(np.isfinite(d), d, 0.0)
@@ -206,7 +213,9 @@ class EvacSim:
                     keep = np.ones(mv.size, bool)
                     for door in np.unique(dn[dn >= 0]):
                         members = np.nonzero(dn == door)[0]
-                        if members.size > self.door_cap:
+                        if self.door_q < 1.0 and rng.random() >= self.door_q:
+                            keep[members] = False          # door admits nobody this step
+                        elif members.size > self.door_cap:
                             keep[members] = False
                             if self.winner == "weighted":
                                 w = p_chosen[mv[members]]
