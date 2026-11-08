@@ -1,0 +1,872 @@
+\documentclass[14pt]{article}
+
+% ---------- Layout & fonts ----------
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.1}
+
+% ---------- Math, figures, tables ----------
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{caption,subcaption}
+\usepackage{float}
+
+% ---------- Header with page count ----------
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\rhead{Page \thepage\ of \pageref*{LastPage}}
+
+% ---------- Citations ----------
+\usepackage[backend=biber,style=numeric-comp,sorting=none]{biblatex}
+\addbibresource{refs.bib}
+
+% ---------- Links & smart references (load last) ----------
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=green!40!black,urlcolor=blue!60!black]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+% ---------- Theorem-style environments ----------
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+
+% ---------- Fill these in ----------
+\newcommand{\papertitle}{Inconvenient Intermissions}
+
+\begin{document}
+
+% ================= COVER PAGE =================
+\begin{titlepage}
+  \thispagestyle{empty}
+  \centering
+  \vspace*{2.5cm}
+  {\huge\bfseries \papertitle\par}
+  \vspace{1.5cm}
+  {\large
+    Roc Michel \quad Siddharth Menon \quad Peter Olhava\par
+    \vspace{0.4cm}
+    Cornell University\par
+  }
+  \vspace{0.8cm}
+  {\large November 9, 2026}
+  \vfill
+  \begin{minipage}{0.85\textwidth}
+    \section*{Abstract}
+    One-page summary: the problem, your modeling approach, key results,
+    and main recommendation. Write this last.
+
+  \end{minipage}
+  \vfill
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ================= BODY =================
+\section{Introduction}
+\subsection{Background}
+Seating 1,329, Bailey Hall is Cornell's largest auditorium(source) With such large capacity comes a greater risk for crowd collapses and crushes. While New York state, Ithaca, and Cornell(source) enforce regulations and evacuation protocols to mitigate these risks, the presence of an emergency like a fire or invader can lead to crowd dynamics which are difficult to predict and control. In order to best ensure safety of Bailey patrons, we must understand how these dynamics arise at an individual and collective level.
+
+\subsection{Problem Restatement}
+We are asked to use mathematical modeling to answer five questions about egress from
+Bailey Hall:
+\begin{enumerate}
+  \item How long does it take a concert audience to leave Bailey Hall?
+  \item How long does it take the same audience to leave in an emergency when guided by
+  Crowd Managers, and how does that time change if one exit is unexpectedly obstructed?
+  \item How does this compare with evacuating the same number of students from a
+  lecture, where no Crowd Managers are present but students know the building and its
+  emergency exits?
+  \item Could egress be made faster, safely, with removable barriers in the corridor
+  that route people from the mezzanine exits to specific exterior doors, or with
+  directional LED strips that guide parts of the audience to specific exits?
+  \item Are such measures cost-effective compared with staffing more Crowd Managers?
+\end{enumerate}
+
+\subsection{Literature Review}
+Fortunate for us, there is already a large existing literature on Crowd analysis. Various authors have considered both discrete (source) and continuous (source) approaches to modeling the dynamics of large crowds. Of particular interest to us where papers on Floor Field Cellular Automata (FFCA) models  (source), and (continuous source).
+
+We found the FFCA framework to be useful because it allowed us to model the evolution of a threat, collective interests and individual decision making all at once. In this framework, a space (floor) is modeled as a grid. Static and dynamic fields over this grid carry information about things like proximity to an exit, or fire, traversability and crowd trends. Individuals are modeled as cells, who occupy a space on the grid and make a decision about where to move at every timestep based on their own characteristics and the various fields in use.
+
+\subsection{Our Approach}
+We developed two complementary models. One based on the FFCA framework described above, and another dynamical system which models how crowd density and "threat" (from a fire or invader) develop throughout the duration of an emergency.
+
+\section{Assumptions and Justifications}
+
+\subsection{Patrons}
+\begin{assumption}\label{as:optimal}
+ Our first assumption is that the average person behaves approximately optimally when exiting Bailey under normal conditions. We believe this is justified as most people have been in enough buildings and have enough common courtesy to work together in a timely manner. Here we are only concerned with optimality of homogeneous behaviors of crowds.
+\end{assumption}
+\begin{assumption}\label{as:consistent}
+ Our second assumption is that in the event of an emergency people's behavior is consistent with their behavior in the absence of an emergency. In our context this means that the exit and crowd weights $k_S$ and $k_D$ do not change when we introduce the fire weight $k_F$ or ushers; an emergency changes the information people act on, not how they act on it. (There's something on the wiki to justify this)
+\end{assumption}
+\begin{assumption}\label{as:accesibility}
+  Our third assumption is that every Bailey patron is able bodied. The reasoning behind this assumption is that accounting for wheelchair accessibility would add complexity to our model (can probably justify this better)
+\end{assumption}
+\begin{assumption}\label{as:second}
+  Our fourth assumption is that every Bailey patron is seated on the first floor, and that every one of its $1010$ seats is occupied when the emergency begins. A full house is the worst case for an evacuation.
+\end{assumption}
+\begin{assumption}\label{as:chairs}
+  Our fifth assumption is that each patron occupies one \SI{0.432}{m} by \SI{0.432}{m} cell, and that no two patrons can share a cell.
+\end{assumption}
+\begin{assumption}\label{as:speed}
+  Our sixth assumption is that every Bailey patron moves at the same speed.
+\end{assumption}
+\begin{assumption}\label{as:pathfinding}
+  Every patron walks at \SI{1.2}{m/s} (about \SI{2.7}{mph}), so one time step, the time to walk one cell orthogonally, is $\Delta t = \SI{0.432}{m} / \SI{1.2}{m/s} = \SI{0.36}{s}$. A diagonal step also takes one time step.
+\end{assumption}
+\begin{assumption}\label{as:knowledge}
+  Every patron knows the layout of the hall and the shortest route from their position to the nearest exit. Patrons at a concert or lecture entered through the same doors and corridors, and the exit doors are visible from the seating.
+\end{assumption}
+\begin{assumption}\label{as:start}
+  Every patron starts moving at the start of the emergency, with no delay to notice the alarm or gather belongings. This makes our evacuation times lower bounds.
+\end{assumption}
+\begin{assumption}\label{as:population}
+  Patrons differ in their decision weights. Their exit and crowd weights $(k_S, k_D)$ are normally distributed around the optimum for a homogeneous crowd, with covariance $c\,H^{-1}$ and $c = 1$, so that each patron's behavior, if adopted by a whole crowd, would cost on average one extra time step. Their fire weights $k_F$ are lognormally distributed with spread $\sigma_F = 0.5$, independently of $(k_S, k_D)$.
+\end{assumption}
+
+\subsection{Movement}
+\begin{assumption}\label{as:parallel}
+  All patrons decide their moves at the same time, based on the state of the hall at the start of the time step. A patron cannot move into a cell that another patron is leaving in the same step.
+\end{assumption}
+\begin{assumption}\label{as:friction}
+  When several patrons try to enter the same cell, with probability $\mu = 0.3$ none of them succeeds, and otherwise one of them does, with probability proportional to how strongly each preferred that cell. The trail left by patrons diffuses and decays at rates $\alpha = \delta = 0.3$ per time step.
+\end{assumption}
+\begin{assumption}\label{as:doors}
+  Each exit door admits at most one patron per time step, with probability $0.6$, about $1.3$ people per meter of door width per second. Patrons are safe once they pass through an exit door; congestion in the corridors and lobby beyond is not modeled.
+\end{assumption}
+
+\subsection{Geometry}
+\begin{assumption}\label{as:geometry}
+  The geometry of the first floor is our parametric reconstruction of the seating chart. Row spacing, the width of the center section and the positions and widths of the six access points are measured from the chart; the remaining dimensions are estimates. The positions of the nine exit doors, each \SI{1.3}{m} wide and evenly spaced along the back wall, are placeholders in the absence of evacuation plans.
+\end{assumption}
+
+\subsection{Fire}
+\begin{assumption}\label{as:firespread}
+  Fire spreads only between adjacent cells, following rules adapted from Minecraft, and its spread does not depend on the patrons.
+\end{assumption}
+\begin{assumption}\label{as:flammable}
+  Every non-wall cell (seats, legroom, aisles, access points and exits) is equally flammable, with the properties of wool in Minecraft. Walls are stone and never burn.
+\end{assumption}
+\begin{assumption}\label{as:ignition}
+  Each fire starts in a single cell, chosen uniformly at random among the non-wall, non-exit, unoccupied cells, at the moment the evacuation begins.
+\end{assumption}
+\begin{assumption}\label{as:untenable}
+  The fire represents untenable conditions (flames and smoke together), which spread through the hall in a median of \SI{6}{min}.
+\end{assumption}
+\begin{assumption}\label{as:sensing}
+  Patrons sense the fire within \SI{3.5}{m} and react to it in proportion to how many steps away from it a move takes them. Beyond that distance the fire does not affect their decisions.
+\end{assumption}
+\begin{assumption}\label{as:exposure}
+  A patron who spends \SI{5}{s} in total in burning cells is incapacitated and remains in place as an obstacle to others. Patrons still inside after \SI{12}{min} are counted as trapped. Both count as casualties.
+\end{assumption}
+
+\subsection{Ushers}
+\begin{assumption}\label{as:usher_position}
+  The $6$ ushers stand against the outer wall of the hall from the start of the emergency, do not occupy a cell or block patrons, and are not affected by the fire.
+\end{assumption}
+\begin{assumption}\label{as:usher_range}
+  An usher influences patrons within $R = 10$ cells (about \SI{4.3}{m}) of walking distance, and a patron in range of several ushers follows the nearest. A patron instructed by an usher remembers the instruction for the rest of the evacuation.
+\end{assumption}
+\begin{assumption}\label{as:usher_door}
+  Each usher directs patrons to one assigned exit door, which does not change during the evacuation, even if the fire reaches it.
+\end{assumption}
+\begin{assumption}\label{as:compliance}
+  Patrons differ in how closely they follow ushers. Each patron's compliance is drawn independently from a Beta distribution with mean $\bar w$ and concentration $4$, independently of their decision weights, and a compliant patron pursues the assigned door with the same determination $k_S$ they would use for the nearest exit.
+\end{assumption}
+
+\section{Notation}
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabular}{ll}
+    \toprule
+    Symbol & Meaning \\
+    \midrule
+    $SD_{ij}$ & steps from cell $(i,j)$ to the nearest exit \\
+    $SD^{(E)}_{ij}$ & steps from cell $(i,j)$ to exit door $E$ \\
+    $ST_{ij}$ & traversability of cell $(i,j)$ ($1$ or $0$) \\
+    $D_{ij}$ & dynamic (foot traffic) field \\
+    $F_{ij}$ & fire proximity field \\
+    $n_{ij}$ & occupancy of cell $(i,j)$ ($1$ or $0$) \\
+    $k_S, k_D, k_F$ & a patron's weights on $SD$, $D$ and $F$ \\
+    $x^* = (k_S^*, k_D^*)$ & optimal exit and crowd weights \\
+    $H$ & Hessian of mean exit time at $x^*$ \\
+    $c$ & spread of the population around $x^*$ \\
+    $m, \sigma_F$ & median and spread of $k_F$ \\
+    $\mu$ & friction: probability no one wins a contested cell \\
+    $\alpha, \delta$ & diffusion and decay of $D$ \\
+    $A_c$ & age of a burning cell \\
+    $s, q$ & fire spread scale and update probability \\
+    $\ell$ & fire sensing range \\
+    $w_a, \bar w$ & compliance of patron $a$; mean compliance \\
+    $R$ & usher range \\
+    $\Delta t$ & time step, \SI{0.36}{s} \\
+    $T$ & simulation horizon, $2000$ steps \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\newpage
+\section{Model}
+\subsection{FFCA}
+\subsubsection{Baseline Model}
+In our FFCA model, we start by rendering the first floor of Bailey hall as a $60$ by $78$ grid of .432 meter by .432 meter cells.
+We chose this cell size based on (x) which suggest that the average human occupies an area of .43 meters by .43 meters (source to justify).
+We then assign one of six types to each grid cell: wall, aisle, legroom, seat, access point, or exit. Aisle, legroom, access point and exit cells are traversable; walls and seats are in-traversable, although a seated patron may step out of their seat. Based on these types we create a distance static field $SD$ and traversability static field $ST$, defined by
+
+$$SD_{ij} = \text{number of steps on the shortest path to an exit via traversable cells}$$
+$$ST_{ij} = \begin{cases}
+    1 \text{ if cell (i,j) is traversable}\\
+    0 \text{ otherwise}
+\end{cases}$$
+The idea here is that $SD$ incorporates information about proximity to the nearest exit, and that $ST$ incorporates information about which grid cells can be walked through. To actually calculate SD we used a breadth first search from the exit cells, in which a step to any of the eight neighboring cells (including diagonals) counts as one step and a diagonal step may not cut the corner of a wall. A seat cell is assigned one more than the smallest value of $SD$ among its traversable neighbors. We computed ST from the cell types, which come from our reconstruction of the seating chart.
+
+Next, we define a dynamic field $D$ as follows. During a given time step, if an automaton (patron) exits cell $(i,j)$ we increment $D_{ij}$ by one unit. Then, after every patron has attempted to move, a fraction $\alpha$ of each cell's value $D_{ij}$ ``dissipates'' equally to its traversable up, down, left and right neighbors, and then every value ``decays'' by a fraction $\delta$, i.e. $D_{ij} \gets (1 - \delta) D_{ij}$. We use $\alpha = \delta = 0.3$. (reference whatever paper this comes from, one of the ones in the doc)
+
+Finally, for a patron $a$ located at grid cell $(i,j)$ the probability of transfer to the cell $(i', j')$, where $(i',j')$ is one of the eight neighboring cells or $(i,j)$ itself (staying put), during a timestep is given by:
+\begin{equation}\label{eq:trans_prob_simple}
+    p^{(a)}_{i', j'} = N_{i,j}^{(a)}\exp(-k^{(a)}_{S}SD_{i',j'})\exp(k^{(a)}_DD_{i',j'})ST_{i',j'}(1 - n_{i' ,j'})
+\end{equation}
+where $N_{i,j}^{(a)}$ is a normalization constant chosen so that these probabilities sum to one.
+
+$n_{i',j'}$ is a binary variable which is 1 when the cell $(i',j')$ is occupied and 0 otherwise (a patron's own cell always counts as unoccupied); the idea here is that $a$ cannot decide to move to a space that is currently occupied even in the event that the occupant concurrently decides to vacate the spot. We believe this is justified and aligns with behavior seen for example in traffic jams(source on ghost traffic or something).
+
+$k_{S}^{(a)}$ and $ k_{D}^{(a)}$ are $a$'s decision weights, and are meant to represent how $a$ values different information given by the fields: $k_S$ is how strongly $a$ heads toward an exit, and $k_D$ is how strongly $a$ follows ($k_D > 0$) or avoids ($k_D < 0$) recent foot traffic. We based this formulation on results from (source).
+
+At each step in the simulation, every patron $a$ simultaneously and randomly chooses which of the nine candidate cells to move to based on \cref{eq:trans_prob_simple}. While we saw various approaches as to how collisions are handled in the literature (sources), we decided that when several patrons choose the same cell, with probability $\mu = 0.3$ none of them moves, and otherwise one of them moves while the others stay put, chosen at random with probability proportional to each patron's probability of choosing that cell. We chose this rule because it captures some idea of conviction, i.e. someone who is more confident about where to move next is more likely to beat out those who are less confident, as well as friction between people competing for the same space.
+
+Each exit door can admit at most one patron per time step, and only with probability $0.6$, which corresponds to about $1.3$ people per meter of door width per second, consistent with measured flows through bottlenecks (source).
+
+Finally, if a person reaches an exit cell, it is removed from the simulation.
+
+\subsubsection{Fire Dynamic Field}\label{sec:fire}
+In this section we extend our baseline model with a fire that starts at a random
+location and spreads while patrons evacuate. While there is an existing literature on
+how fire spreads, especially outdoors in wildfires, we found few discrete models
+suitable for a building interior, so we based our fire on the fire mechanics of
+everyone's favorite game, Minecraft (Java Edition) \cite{minecraftfire}, restricted to
+two dimensions. The fire makes cells impassable, repels patrons through a fire
+proximity field, and incapacitates patrons who remain in it too long.
+
+\paragraph{Fire spread.} Each cell $c$ carries an age $A_c \in \{-1, 0, \dots, 15\}$,
+where $A_c = -1$ means $c$ is not burning, and a flag recording whether its fuel has
+been used up. A cell is flammable if it is not a wall, not burning, and still has fuel.
+Let $M(c)$ denote the eight cells surrounding $c$. At each time step the fire updates
+with probability $q$, analogous to Minecraft's random block ticks; when it updates,
+every cell changes simultaneously:
+\begin{enumerate}
+  \item A burning cell $c'$ ignites each flammable neighbor independently with
+  probability
+  \begin{equation}\label{eq:fire_spread}
+    p_{\text{ign}}(A_{c'}) = s \cdot \frac{\iota + 40 + 7\kappa}{100\,(A_{c'} + 30)},
+  \end{equation}
+  so a flammable cell $c$ catches fire with probability
+  $1 - \prod_{c' \in M(c),\, A_{c'} \ge 0} \bigl(1 - p_{\text{ign}}(A_{c'})\bigr)$.
+  \item A burning cell uses up its fuel with probability $\beta / 300$.
+  \item The age of a burning cell increases by one with probability $1/3$, up to $15$.
+  \item A burning cell goes out if $A_c > 3$ and no neighbor is flammable, or with
+  probability $1/4$ once $A_c = 15$.
+\end{enumerate}
+A cell whose fire is consumed or burns out becomes ash, which is passable but no
+longer flammable. These rules follow Minecraft, with two changes forced by working in
+two dimensions: Minecraft's fire is a block next to separate fuel blocks and can spread
+upward, whereas ours occupies the fuel cell itself and spreads within its eight-cell
+neighborhood. The fuel constants are those of wool, ignite odds $\iota = 30$ and burn
+odds $\beta = 60$, at the normal difficulty level $\kappa = 2$ \cite{minecraftfire}.
+
+\paragraph{Calibration.}\label{sec:fire_calibration} The spread scale $s$ controls the
+fire's shape, whether an ignition takes hold and how completely the front burns the
+hall, while the update probability $q$ controls only its speed: lowering $q$ stretches
+the fire's timeline by $1/q$ without changing how it spreads. We calibrate them
+separately. For each candidate $s$ we run the fire alone from $40$ random ignition
+sites with $q = 1$. A fire is established if it eventually reaches at least half the
+non-wall cells, and its engulfment time is the first update at which it has reached
+$95\%$ of the area it eventually burns. Below a threshold value of $s$ most ignitions
+fizzle, so lowering $s$ cannot make the fire slower without making it unreliable. We
+choose $s = 8$, for which about $90\%$ of ignitions become established fires that
+burn essentially the whole hall; the rest fizzle, as some real ignitions do. With the
+median engulfment time $n_{\text{eng}}$ of established fires, measured in updates, a
+target engulfment time $T_{\text{eng}}$ requires
+\begin{equation}\label{eq:fire_q}
+  q = \frac{n_{\text{eng}}\, \Delta t}{T_{\text{eng}}}.
+\end{equation}
+We take $T_{\text{eng}} = \SI{6}{min}$, which with $n_{\text{eng}} = 78$ gives
+$q = 0.078$. For comparison, fire-protection practice models fire growth as a $t^2$
+design fire \cite{sfpe}, under which the flame front in upholstered seating advances
+only millimeters per second. Smoke, not flame, is the main hazard in real assembly
+fires and fills a hall far faster \cite{sfpe}, so our fire represents the spread of
+untenable conditions, flames and smoke together, rather than flames alone.
+
+\paragraph{Fire proximity field.} Let $r_{ij}$ be the number of steps from $(i,j)$ to
+the nearest burning cell through non-wall cells. The fire proximity field is
+\begin{equation}\label{eq:fire_field}
+  F_{ij} = \max\bigl(0,\ \ell - r_{ij}\bigr), \qquad \ell = 8 \text{ cells}
+  \ (\approx \SI{3.5}{m}).
+\end{equation}
+Within $\ell$ cells of the fire, each step away from it lowers $F$ by exactly one, the
+same unit in which each step toward an exit lowers $SD$, so $k_F / k_S$ is how much a
+patron values a step away from the fire relative to a step toward an exit.
+
+\paragraph{Movement and casualties.} With fire present, the transition probability is
+\begin{equation}\label{eq:trans_prob_fire}
+  p^{(a)}_{i',j'} = N^{(a)}_{i,j}
+  \exp\!\bigl(-k^{(a)}_S SD_{i',j'} + k^{(a)}_D D_{i',j'} - k^{(a)}_F F_{i',j'}\bigr)
+  ST_{i',j'}\,(1 - n_{i',j'})\,\mathbf{1}[(i',j') \text{ not burning}].
+\end{equation}
+Burning cells and casualties block paths, so $SD$ is recomputed whenever either
+changes; cells from which no exit can be reached are assigned one more than the largest
+finite distance. A patron standing in a burning cell for \SI{5}{s} in total becomes a
+casualty and remains in place as an obstacle; patrons still inside at $T$ are counted
+as trapped. Each simulation starts with a single ignition cell drawn uniformly from
+the non-wall, non-exit, unoccupied cells.
+
+\paragraph{Heterogeneous population.} Each patron $a$ receives individual weights. By
+\cref{as:optimal}, we draw $(k_S, k_D)$ around the optimum $x^*$ for a homogeneous crowd
+(\cref{sec:learn_kS_kD}). Near $x^*$, mean exit time is approximately
+$J(x) \approx J^* + \frac{1}{2}(x - x^*)^\top H (x - x^*)$, and we draw
+\begin{equation}\label{eq:population}
+  \bigl(k^{(a)}_S, k^{(a)}_D\bigr) \sim \mathcal{N}\bigl(x^*,\ c\,H^{-1}\bigr),
+\end{equation}
+redrawing any sample with $k_S \le 0$. Patrons then vary widely where variation is
+cheap and narrowly where it is costly, and
+$\mathbb{E}[J(x^{(a)}) - J^*] \approx \frac{1}{2}\operatorname{tr}(H\,cH^{-1}) = c$, so
+$c$ is the average cost per patron in time steps. Equivalently, \cref{eq:population} is
+the quadratic approximation of a Boltzmann distribution
+$p(x) \propto \exp(-(J(x) - J^*)/c)$. We use $c = 1$. The fire weight is lognormal,
+independent of $(k_S, k_D)$:
+\begin{equation}\label{eq:kF}
+  k^{(a)}_F = m\, e^{\sigma_F z_a}, \qquad z_a \sim \mathcal{N}(0,1),\ \sigma_F = 0.5.
+\end{equation}
+
+\paragraph{Learning the fire weight.}\label{sec:learn_kF} Holding the distribution of
+$(k_S, k_D)$ fixed (\cref{as:consistent}), we learn the median $m$ by minimizing
+\begin{equation}\label{eq:fire_objective}
+  \mathcal{J}(m) = \mathbb{E}\left[C + \lambda\, \frac{\bar t}{t_{\text{ref}}}\right],
+  \qquad \lambda = 0.1,\ t_{\text{ref}} = 174 \text{ steps},
+\end{equation}
+where $C$ is the casualty fraction, $\bar t$ the survivors' mean exit time, and
+$t_{\text{ref}}$ the optimal mean exit time without fire, so one percent of casualties
+counts as much as about $17$ steps of exit time. We evaluate
+$m \in \{0, 0.5, 1, 2, 3, 5, 8, 12, 20\}$ with $50$ replicates each. Every replicate
+fixes the ignition site, the population draw, the patrons' random stream and a separate
+random stream for the fire, all shared across values of $m$ (common random numbers);
+since the fire does not depend on the patrons, each replicate's fire is identical for
+every $m$, and differences between values of $m$ are paired comparisons.
+
+\subsubsection{Usher Static Field}\label{sec:ushers}
+Real evacuations are rarely left entirely to the crowd: ushers direct patrons toward
+particular exits, typically to spread people across doors that would otherwise go
+unused. We add $6$ ushers to the model. Usher $u$ stands at a cell $b_u$ on the outer
+edge of the hall, next to the wall, and directs patrons toward an assigned exit door
+$E_u$. Ushers stand against the wall and do not occupy a cell, so they never block a
+patron's path.
+
+For an exit door $E$, let $SD^{(E)}_{ij}$ be the distance from $(i,j)$ to the cells of
+door $E$ only, computed in the same way as $SD$ (breadth first search through
+traversable cells, every step to one of the eight neighboring cells counting as one
+step). Directing a patron to a door also directs them through whichever access point
+lies on their shortest path to that door, so ushers can redistribute orchestra patrons
+across the access points as well as across the doors.
+
+An usher can only reach patrons nearby. The influence region $U_u$ of usher $u$ is the
+set of traversable cells within $R$ steps of $b_u$, measured through traversable cells
+so that walls block it. We use $R = 10$ cells (about \SI{4.3}{m}), roughly the distance
+at which an usher can make themselves heard and seen in a crowd. Where two regions
+overlap, the cell belongs to the nearer usher. A patron becomes instructed by usher $u$
+the first time they stand in $U_u$, and follows that instruction for the rest of the
+evacuation; we write $E(a)$ for the door patron $a$ was directed to.
+
+Patrons do not all comply equally. Each patron $a$ receives a compliance
+$w_a \in [0,1]$, drawn once at the start of the simulation from a Beta distribution
+with mean $\bar w$ and concentration $4$,
+\begin{equation}\label{eq:compliance}
+    w_a \sim \operatorname{Beta}\bigl(4\bar w,\ 4(1 - \bar w)\bigr).
+\end{equation}
+A patron with $w_a = 0$ ignores the ushers entirely and a patron with $w_a = 1$ follows
+them completely. Since there is little data on how closely people follow staff
+instructions in an emergency, we treat the mean compliance $\bar w$ as a scenario
+parameter and compare several values rather than fixing one.
+
+An instructed patron blends their own goal, the nearest exit, with the usher's:
+\begin{equation}\label{eq:usher_distance}
+    SD^{(a)}_{ij} = (1 - w_a)\, SD_{ij} + w_a\, SD^{(E(a))}_{ij},
+\end{equation}
+and an uninstructed patron has $SD^{(a)} = SD$. The transition probability is
+\cref{eq:trans_prob_simple} with $SD$ replaced by $SD^{(a)}$:
+\begin{equation}\label{eq:trans_prob_usher}
+    p^{(a)}_{i', j'} = N_{i,j}^{(a)}\exp(-k^{(a)}_{S}SD^{(a)}_{i',j'})\exp(k^{(a)}_DD_{i',j'})ST_{i',j'}(1 - n_{i' ,j'}).
+\end{equation}
+Because the term $-k_S\, SD^{(a)}$ keeps its sign, an instructed patron prefers moves
+that bring them closer to a mix of the nearest exit and the assigned door: a step that
+brings them one cell closer to the assigned door, but no closer to the nearest exit,
+lowers $SD^{(a)}$ by $w_a$ and so is favored by a factor $e^{k_S w_a}$. A fully
+compliant patron heads for the assigned door with the same determination $k_S$ they
+would otherwise use to head for their nearest exit. Ushers therefore introduce no new
+behavioral weight: they change the information patrons act on, not how patrons act on
+it, consistent with \cref{as:consistent}.
+
+When a fire is present, burning cells and casualties block $SD^{(E)}$ exactly as they
+block $SD$, and $SD^{(E)}$ is recomputed whenever $SD$ is. An usher's assigned door does
+not change during the evacuation, so a patron directed toward a door that the fire has
+cut off simply faces a longer path.
+
+The ushers' positions $b_u$ are chosen from the walkable cells along the outer wall of
+the hall, and each usher's door $E_u$ from the doors nearest to it. Choosing the
+positions and doors that minimize casualties is a combinatorial problem, which we treat
+in \cref{sec:combinatorial}.
+
+\subsubsection{Combinatorial Optimization}\label{sec:combinatorial}
+We choose the positions and doors of the $6$ ushers to minimize the fire objective
+\cref{eq:fire_objective}, with the population \cref{eq:population}, the learned median
+fire weight $m = 1$, and mean compliance $\bar w = 0.5$. Candidate positions are the
+walkable cells along the outer wall, thinned to at least $4$ cells apart, which gives
+$40$ slots; each usher may direct patrons to either of the two doors nearest its slot.
+The $80^6$ possible configurations are far too many to evaluate, so we search
+heuristically:
+\begin{enumerate}
+  \item \emph{Greedy placement.} We add ushers one at a time, each time choosing the
+  slot and door that most reduce $\mathcal{J}$ given the ushers already placed,
+  estimated on $12$ fire scenarios with common random numbers.
+  \item \emph{Local search.} For each usher in turn, we try moving it to one of the two
+  slots on either side along the wall, or switching its door, and accept a move only if
+  it improves $\mathcal{J}$ by more than one paired standard error. We repeat for up to
+  three passes, stopping when a pass finds no improvement.
+  \item \emph{Evaluation.} Because the search selects the best of many noisy estimates,
+  its own estimates are optimistic. We therefore re-evaluate the final configuration on
+  $100$ fresh scenarios not used in the search, alongside no ushers, the greedy
+  configuration and $10$ random configurations of $6$ ushers.
+  \item \emph{Marginal value.} To measure what each additional usher contributes, we
+  evaluate the first $k$ greedy ushers for $k = 0, \dots, 6$ on the same fresh
+  scenarios.
+\end{enumerate}
+
+\newpage
+\section{Methodology}
+\subsection{Determining the Coefficients}\label{sec:coefficients}
+
+The model has three kinds of coefficients. The behavioral weights $k_S$, $k_D$ and $k_F$
+describe how patrons decide where to move, and we learn them by simulation. The fire
+parameters $s$ and $q$ are calibrated against a target fire behavior. The remaining
+constants are fixed from the literature or by assumption.
+\Cref{tab:coefficients} summarizes how each is determined.
+
+\subsubsection{Exit and Crowd Weights}\label{sec:learn_kS_kD}
+
+By \cref{as:optimal}, patrons behave approximately optimally when leaving Bailey under
+normal conditions. We therefore take $(k_S, k_D)$ to be the values that evacuate a full
+hall fastest, for a homogeneous crowd in which every patron has the same weights and
+there is no fire.
+
+\paragraph{Objective.} For one simulation with all $1010$ seats occupied, let $t_a$ be the
+time step at which patron $a$ exits. We minimize the expected mean exit time
+\begin{equation}\label{eq:baseline_objective}
+  J(k_S, k_D) = \mathbb{E}\left[\frac{1}{1010}\sum_{a} \min(t_a,\ T + 1)\right],
+\end{equation}
+where patrons still inside at the horizon $T = 2000$ steps count as exiting at $T + 1$.
+This is equivalent to maximizing the area under the curve of patrons evacuated against
+time, so it rewards getting people out early, penalizes patrons who never leave, and is
+much less noisy than the time at which the last patron exits. The expectation is over
+the patrons' random choices and the collision and door draws.
+
+\paragraph{Why both weights are free.} The transition probabilities
+\cref{eq:trans_prob_simple} depend on $(k_S, k_D)$ in two ways: through their ratio, which
+sets how patrons trade exit-seeking against crowd-following, and through their overall
+magnitude, which sets how deterministic patrons are. Constraining the weights, for
+example to $k_S + k_D = 1$, would fix the magnitude and remove the second effect, which
+turned out to matter most. We therefore search over both weights without constraints,
+allowing either sign for $k_D$.
+
+\paragraph{Coarse search.} We evaluate $J$ on the grid
+$k_S \in \{0, 1, \dots, 10\}$, $k_D \in \{-8, -7, \dots, 4\}$, with $R = 20$ independent
+simulations (replicates) per grid point. Replicate $r$ uses the same random seed at every
+grid point (common random numbers), so differences between grid points reflect the
+weights rather than different random draws.
+
+\paragraph{Refinement.} Around the best coarse point we evaluate a finer $9 \times 9$ grid
+spanning one coarse step on each side, again with $20$ replicates and common random
+numbers. Because the objective is noisy, the best point on the refined grid is not a
+reliable estimate of the optimum: it is the minimum of $81$ noisy averages, and is biased
+toward values that happened to be lucky. Instead we fit the quadratic
+\begin{equation}\label{eq:quadratic_fit}
+  J(k_S, k_D) \approx c_0 + c_1 k_S + c_2 k_D + c_3 k_S^2 + c_4 k_S k_D + c_5 k_D^2
+\end{equation}
+by least squares to all $81$ refined averages. Its minimizer $x^* = (k_S^*, k_D^*)$
+solves
+\begin{equation}\label{eq:quadratic_min}
+  H x^* = -\begin{pmatrix} c_1 \\ c_2 \end{pmatrix}, \qquad
+  H = \begin{pmatrix} 2c_3 & c_4 \\ c_4 & 2c_5 \end{pmatrix},
+\end{equation}
+and is a minimum because both eigenvalues of the Hessian $H$ are positive. We check
+that $x^*$ lies inside the refined grid, so the fit interpolates rather than
+extrapolates.
+
+\paragraph{Uncertainty.} To obtain confidence intervals for $x^*$ we bootstrap over
+replicates: we resample the $20$ replicate indices with replacement, using the same
+resampled indices at every grid point to preserve the common random numbers, refit the
+quadratic, and record the minimizer. The $2.5$th and $97.5$th percentiles over $2000$
+resamples give $95\%$ intervals. The eigenvalues of $H$ also describe the shape of the
+optimum: a large eigenvalue means $J$ rises quickly in the direction of its eigenvector,
+and a small one means it is nearly flat. A small eigenvalue produces a long, narrow
+valley of near-optimal weights, along which the individual weights are poorly determined
+even though the valley itself is well determined.
+
+\paragraph{Validation.} To confirm that the fitted optimum reflects a real effect rather
+than noise, we compare it directly with nearby alternatives on fresh random seeds with
+$200$ replicates. For instance, to test whether crowd avoidance helps, we compare
+$k_D = k_D^*$ with $k_D = 0$ at $k_S = k_S^*$, using the same seeds for both and
+computing the standard error of the paired difference.
+
+\subsubsection{Population Spread}\label{sec:population_spread}
+
+The fitted $x^*$ and $H$ define the heterogeneous population
+\cref{eq:population}. Its spread $c$ cannot be learned in the same way: any spread is
+worse than none for a crowd optimized as a whole, so optimizing $c$ would remove the
+heterogeneity. We instead fix $c = 1$, so each patron's weights would, if adopted by a
+whole crowd, cost on average one extra time step.
+
+\subsubsection{Fire Weight}\label{sec:learn_kF_method}
+
+The fire weight $k_F$ is learned as the median $m$ of its lognormal distribution
+\cref{eq:kF}, with the population of $(k_S, k_D)$ held fixed and the objective
+\cref{eq:fire_objective} averaged over random ignition sites, as described in
+\cref{sec:learn_kF}. The spread $\sigma_F = 0.5$ is fixed for the same reason as $c$.
+
+\subsubsection{Fixed Constants}\label{sec:fixed_constants}
+
+The friction $\mu = 0.3$ and the dynamic field rates $\alpha = \delta = 0.3$ are fixed
+at values typical of floor field models (sources). Door throughput, at most one patron
+per step with probability $0.6$, is set so that each \SI{1.3}{m} door passes about
+$1.3$ people per meter per second, within the range measured for bottlenecks
+\cite{seyfried}. The fire parameters $s$ and $q$ are calibrated as in
+\cref{sec:fire_calibration}.
+
+\begin{table}[H]
+  \centering
+  \caption{How each coefficient is determined.}
+  \label{tab:coefficients}
+  \small
+  \begin{tabular}{lll}
+    \toprule
+    Coefficient & Meaning & How determined \\
+    \midrule
+    $k_S$ & weight on distance to an exit & learned: optimal homogeneous crowd, no fire \\
+    $k_D$ & weight on recent foot traffic & learned: optimal homogeneous crowd, no fire \\
+    $H$ & curvature of $J$ at the optimum & fitted quadratic, \cref{eq:quadratic_fit} \\
+    $c$ & spread of $(k_S, k_D)$ in the population & assumed: $1$ time step \\
+    $k_F$ (median $m$) & weight on fire proximity & learned: minimizes \cref{eq:fire_objective} \\
+    $\sigma_F$ & spread of $k_F$ & assumed: $0.5$ \\
+    $s$ & fire spread scale & calibrated: about $90\%$ of ignitions establish \\
+    $q$ & fire update probability & calibrated: median engulfment in \SI{6}{min} \\
+    $\mu$ & friction & fixed from the literature \\
+    $\alpha, \delta$ & dynamic field diffusion, decay & fixed from the literature \\
+    door throughput & one patron w.p.\ $0.6$ per step & matched to measured bottleneck flow \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\newpage
+\section{Results}
+\subsection{FFCA}
+All simulations use the full house of $1010$ patrons on the first floor. Times are in
+time steps of $\Delta t = \SI{0.36}{s}$ (\cref{as:pathfinding}).
+
+\subsubsection{Baseline Model}\label{sec:results_baseline}
+\paragraph{Optimal exit and crowd weights.} The coarse search found its best point at
+$(k_S, k_D) = (2, -3)$, with mean exit time $173.8 \pm 0.7$ steps. The quadratic fit to
+the refined grid gives the optimum
+\begin{equation}\label{eq:optimum}
+  (k_S^*, k_D^*) = (2.08,\ -2.98),
+\end{equation}
+with $95\%$ bootstrap intervals $k_S^* \in [2.07, 2.12]$ and $k_D^* \in [-3.33, -2.82]$
+and predicted optimal mean exit time $J^* = 174.3$ steps (\SI{63}{s}). Both Hessian
+eigenvalues are positive ($1.0$ and $29.9$), so this is a genuine minimum. On $200$
+fresh paired replicates, crowd avoidance ($k_D = -2.98$) beat $k_D = 0$ at $k_S = 2.08$
+by $7.4 \pm 0.3$ steps ($182.5$ versus $175.1$), confirming the effect.
+
+\paragraph{Interpretation.} Optimal patrons are moderately goal-directed and avoid
+recent foot traffic. With $k_S^* \approx 2.08$, a cell one step closer to an exit is
+favored by a factor $e^{2.08} \approx 8$. More strongly goal-directed patrons converge
+on the same aisles, access points and doors and queue there while other routes sit
+underused; negative $k_D$ spreads patrons onto less-traveled routes. This depends on
+the doors' limited throughput: without a limit, mean exit time kept decreasing as $k_S$
+grew and there was no interior optimum.
+
+\paragraph{Access points.} With the access points at their measured positions and
+widths, the optimal mean exit time is $174$ steps, compared with $150$ in an earlier
+grid with evenly spaced placeholder access points, while the optimal weights barely
+changed. The access points are the main bottleneck for the $525$ orchestra patrons, and
+their placement alone changes the evacuation time by about $16\%$.
+
+\paragraph{Population.} With $c = 1$, the population \cref{eq:population} has
+$\operatorname{sd}(k_S) \approx 0.20$, $\operatorname{sd}(k_D) \approx 1.0$ and
+$\operatorname{corr}(k_S, k_D) \approx -0.45$.
+
+\subsubsection{Fire Dynamic Field}\label{sec:results_fire}
+\paragraph{Calibration.} \Cref{tab:fire_calibration} shows the fire for several spread
+scales with $q = 1$.
+
+\begin{table}[H]
+  \centering
+  \caption{Fire calibration ($q = 1$, $40$ random ignitions per $s$). Coverage and
+  engulfment are medians over established fires; the last column is the $q$ giving a
+  median engulfment time of \SI{180}{s}.}
+  \label{tab:fire_calibration}
+  \begin{tabular}{rcccc}
+    \toprule
+    $s$ & established & coverage & engulfment (updates) & $q$ for \SI{180}{s} \\
+    \midrule
+    4  & $78\%$  & $0.91$ & $174$ & $0.348$ \\
+    6  & $88\%$  & $0.99$ & $100$ & $0.200$ \\
+    8  & $90\%$  & $1.00$ & $78$  & $0.156$ \\
+    12 & $100\%$ & $1.00$ & $62$  & $0.124$ \\
+    16 & $100\%$ & $1.00$ & $53$  & $0.106$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Optimal fire weight.} \Cref{tab:kF} shows the results. Moderate fire
+avoidance reduces casualties by about a third: raising $m$ from $0$ to $1$ lowers the
+casualty fraction from $2.5\%$ to $1.6\%$ (from about $25$ to $16$ of $1010$ patrons).
+Strong avoidance is counterproductive: casualties rise to about $3.5\%$ for $m \ge 8$,
+and the share of trapped patrons more than doubles, as patrons who put distance from the
+fire ahead of progress toward an exit are cut off. Avoidance also delays survivors,
+whose mean exit time rises from $176.5$ steps at $m = 0$ to $212$ at $m = 20$.
+$\mathcal{J}$ is minimized at $m = 1$, with $m = 0.5$ within two paired standard errors.
+At $m = 1$ the typical patron weights a step away from the fire about half as much as a
+step toward an exit.
+
+\begin{table}[H]
+  \centering
+  \caption{Learning the median fire weight $m$ ($T_{\text{eng}} = \SI{6}{min}$, $50$
+  paired replicates). Exit time is the survivors' mean, in steps.}
+  \label{tab:kF}
+  \begin{tabular}{rccccc}
+    \toprule
+    $m$ & $\mathcal{J}$ & casualties & burned & trapped & exit time \\
+    \midrule
+    0    & $0.126$ & $2.49\%$ & $2.27\%$ & $0.22\%$ & $176.5$ \\
+    0.5  & $0.122$ & $1.90\%$ & $1.72\%$ & $0.18\%$ & $178.3$ \\
+    1    & $0.120$ & $1.61\%$ & $1.43\%$ & $0.19\%$ & $180.5$ \\
+    2    & $0.127$ & $1.82\%$ & $1.50\%$ & $0.33\%$ & $188.4$ \\
+    3    & $0.136$ & $2.26\%$ & $1.86\%$ & $0.40\%$ & $196.4$ \\
+    5    & $0.148$ & $2.91\%$ & $2.43\%$ & $0.48\%$ & $207.3$ \\
+    8    & $0.155$ & $3.38\%$ & $2.82\%$ & $0.56\%$ & $210.7$ \\
+    12   & $0.157$ & $3.49\%$ & $2.94\%$ & $0.55\%$ & $211.5$ \\
+    20   & $0.157$ & $3.53\%$ & $2.97\%$ & $0.56\%$ & $212.0$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Usher Static Field}\label{sec:results_ushers}
+\paragraph{Door loads without ushers.} Without ushers, exits are used very unevenly
+(\cref{tab:door_loads}). The two outermost doors carry $44\%$ of all patrons and the
+center door $3\%$; at $0.6$ patrons per step, each outermost door needs at least
+$370$ steps (\SI{130}{s}) to clear its load, so these two doors set the total egress
+time. The steps by the stage are almost unused, since they lead up into the boxes, the
+long way round to the busy outer doors.
+
+\begin{table}[H]
+  \centering
+  \caption{Mean number of patrons using each door and access point, fire scenarios,
+  no ushers ($50$ replicates). Pairs are left and right.}
+  \label{tab:door_loads}
+  \begin{tabular}{lcc}
+    \toprule
+    Door or access point & position $x$ (\si{m}) & patrons \\
+    \midrule
+    outermost doors & $\pm 14.7$ & $221,\ 222$ \\
+    second doors & $\pm 11.6$ & $108,\ 110$ \\
+    third doors & $\pm 8.0$ & $97,\ 97$ \\
+    fourth doors & $\pm 4.1$ & $54,\ 50$ \\
+    center door & $0$ & $34$ \\
+    \midrule
+    steps by the stage & $\pm 11.0$ & $3,\ 2$ \\
+    side stairs & $\pm 11.0$ & $148,\ 146$ \\
+    tops of the main aisles & $\pm 4.5$ & $117,\ 114$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Optimal placement.} \Cref{tab:ushers} compares the optimized placement with
+no ushers and with $10$ random placements of $6$ ushers, on $100$ fresh scenarios not
+used in the search. Local search found no improving moves, so the optimized placement is
+the greedy one. Two ushers stand on the side walls about \SIrange{10}{12}{m} from the
+stage, beside the side stairs, one on each side, and direct patrons from the overloaded
+outermost doors to the second doors in. The other four stand along the front of the
+hall on the left. With the optimized ushers, casualties fall by about a third, from
+$1.14\%$ to $0.79\%$ of patrons, and survivors leave $21$ steps (about \SI{7.6}{s}, or
+$12\%$) sooner on average; the paired improvement in $\mathcal{J}$ is
+$0.0157 \pm 0.0006$. The ushers rebalance the doors: the outermost doors' loads fall from
+$229$ and $237$ patrons to $168$ and $149$, and the second doors' rise from $111$ and $115$
+to $184$ and $205$, so the busiest door carries $205$ patrons instead of $237$.
+
+\paragraph{Placement matters more than numbers.} Randomly placed ushers are, on average,
+no better than none: their mean $\mathcal{J}$, $0.1150$, is indistinguishable from the
+$0.1160$ with no ushers. The best random placement came close to the optimum, but several
+were clearly harmful; the worst raised casualties to $1.41\%$ and the survivors' mean exit
+time to $206$ steps, worse than having no ushers at all, by sending patrons toward doors
+that were already overloaded. Meeting the legally required number of Crowd Managers is
+therefore not enough on its own: where they stand, and which doors they direct people
+to, determines whether they help.
+
+\begin{table}[H]
+  \centering
+  \caption{Ushers ($\bar w = 0.5$), $100$ fresh paired replicates. $\Delta\mathcal{J}$ is
+  the paired change relative to no ushers.}
+  \label{tab:ushers}
+  \begin{tabular}{lcccc}
+    \toprule
+    Configuration & $\mathcal{J}$ & casualties & exit time & $\Delta\mathcal{J}$ \\
+    \midrule
+    no ushers & $0.1160$ & $1.14\%$ & $182.0$ & -- \\
+    optimized & $0.1003$ & $0.79\%$ & $160.9$ & $-0.0157 \pm 0.0006$ \\
+    random, mean of $10$ & $0.1150$ & $1.05\%$ & $181.8$ & $-0.0010$ \\
+    random, best & $0.1017$ & $0.81\%$ & $163.0$ & $-0.0143 \pm 0.0006$ \\
+    random, worst & $0.1328$ & $1.41\%$ & $206.4$ & $+0.0167 \pm 0.0007$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Combinatorial Optimization}\label{sec:results_combinatorial}
+\Cref{tab:usher_curve} shows the value of each additional usher, adding them in the
+order chosen by the greedy search and evaluating on the same $100$ fresh scenarios. The
+first two ushers, the symmetric pair on the side walls, provide the entire benefit:
+each reduces $\mathcal{J}$ by about $0.007$--$0.008$, and together they cut casualties
+from $1.14\%$ to $0.76\%$ and survivors' mean exit time from $182$ to $161$ steps. The
+remaining four, along the front of the hall, change $\mathcal{J}$ by less than two paired
+standard errors each; the greedy search added them because, among $80$ options evaluated
+on only $12$ scenarios, some option always looks best by chance. Two well-placed Crowd
+Managers therefore capture essentially all of the benefit of redirecting patrons, well
+below the five that New York requires for $1010$ patrons \cite{nycrowd}. The required
+number is set by occupancy rather than by the needs of redirection, and the remaining
+managers' value lies in other duties, for example responding to an obstructed exit.
+
+\begin{table}[H]
+  \centering
+  \caption{Value of each additional usher, in greedy order ($\bar w = 0.5$, $100$ fresh
+  paired replicates). $\Delta\mathcal{J}$ is the paired change from one fewer usher.}
+  \label{tab:usher_curve}
+  \begin{tabular}{ccccc}
+    \toprule
+    Ushers & $\mathcal{J}$ & casualties & exit time & $\Delta\mathcal{J}$ \\
+    \midrule
+    0 & $0.1160$ & $1.14\%$ & $182.0$ & -- \\
+    1 & $0.1075$ & $0.91\%$ & $171.2$ & $-0.0085 \pm 0.0006$ \\
+    2 & $0.1003$ & $0.76\%$ & $161.3$ & $-0.0072 \pm 0.0005$ \\
+    3 & $0.1007$ & $0.76\%$ & $162.0$ & $+0.0003 \pm 0.0003$ \\
+    4 & $0.1002$ & $0.76\%$ & $161.0$ & $-0.0005 \pm 0.0003$ \\
+    5 & $0.1003$ & $0.79\%$ & $160.8$ & $+0.0001 \pm 0.0003$ \\
+    6 & $0.1003$ & $0.79\%$ & $160.9$ & $0.0000$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Egress Times}\label{sec:results_egress}
+\Cref{tab:egress} answers the first two questions. After a concert, with every patron
+leaving at once, the first floor empties in $475$ time steps (\SI{171}{s}, just under
+\SI{3}{min}); with a pre-movement delay of median \SI{30}{s}, as patrons gather their
+belongings, it takes $546$ steps (\SI{197}{s}). Most patrons leave far sooner, with a
+median exit time under a minute, but the final minutes are a queue: the busiest door
+serves about $249$ patrons at $0.6$ per step, which takes at least $415$ steps on its own.
+Total egress time is therefore set by the load on the busiest door rather than by
+walking distance.
+
+In a fire without Crowd Managers, the typical exit time is unchanged, but the last
+patrons are delayed by blocked routes, and the hall takes about $608$ steps
+(\SI{219}{s}) to empty, with large variation between fires. With the optimized Crowd
+Managers, the busiest door's load falls from $248$ to $207$ patrons. Comparing the two
+scenarios on the same $50$ fires, the Crowd Managers reduce the mean exit time by
+$19.7 \pm 1.0$ steps (\SI{7.1}{s}), the time by which $95\%$ of patrons are out by
+$68 \pm 4$ steps (\SI{24}{s}), and casualties by $0.35 \pm 0.10$ percentage points. Their
+effect on the time the last patron leaves, $-36 \pm 22$ steps, is not statistically
+significant: that time is driven by the few patrons the fire delays most, whose routes
+the Crowd Managers do not reach.
+
+\begin{table}[H]
+  \centering
+  \caption{Egress times for $1010$ patrons, $50$ replicates with common random numbers.
+  Times are means over replicates of each replicate's statistic, in seconds; ``last
+  out'' is the time the hall is empty.}
+  \label{tab:egress}
+  \begin{tabular}{lcccccc}
+    \toprule
+    Scenario & mean & median & $95$th pct. & last out & casualties & busiest door \\
+    \midrule
+    concert & $63.8$ & $55.9$ & $151.4$ & $170.9 \pm 0.7$ & $0\%$ & $249$ \\
+    concert, \SI{30}{s} delay & $82.7$ & $73.6$ & $169.9$ & $196.5 \pm 2.7$ & $0\%$ & $251$ \\
+    fire, no Crowd Managers & $63.9$ & $55.1$ & $153.9$ & $218.9 \pm 8.4$ & $1.42\%$ & $248$ \\
+    fire, Crowd Managers & $56.8$ & $51.8$ & $129.5$ & $205.7 \pm 9.8$ & $1.07\%$ & $207$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+These times run from the seats to the mezzanine doors; the corridors and exterior doors
+beyond them are not modeled here (\cref{as:doors}). The \SI{30}{s} pre-movement delay is
+an assumed value.
+
+\section{Sensitivity Analysis}
+\subsection{FFCA}
+\paragraph{Fire speed and lethality.} With a faster fire, engulfing the hall in a median
+of \SI{3}{min}, and casualties occurring on first contact, casualties are far higher:
+$19.6\%$ without fire avoidance and $16.5\%$ at the optimum. The objective is again
+minimized at an intermediate fire weight, but the optimum shifts to $m = 2$, with
+$m = 3$ within two paired standard errors: a faster, deadlier fire rewards keeping
+farther from it, with a step away from the fire weighted about as much as a step toward
+an exit. The qualitative conclusion, that moderate avoidance beats both ignoring the
+fire and fleeing it at all costs, is robust; the optimal strength of avoidance depends
+on the threat.
+
+\paragraph{Geometry.} Moving the access points from placeholder to measured positions
+changed the optimal mean exit time by $16\%$ but the optimal weights by less than
+$0.2$, so the behavioral conclusions are robust to the geometry while the egress times
+are not.
+
+\section{Strengths and Weaknesses}
+\subsection{Strengths}
+\begin{itemize}
+  \item Behavioral weights are learned from the model itself rather than assumed, with
+  uncertainty quantified by bootstrap and paired validation.
+  \item Patrons are heterogeneous in a principled way, near-optimal in a precise sense.
+  \item All comparisons use common random numbers, so differences between scenarios
+  reflect the scenarios rather than random variation.
+  \item The geometry is reconstructed from the seating chart, with the access points
+  measured.
+\end{itemize}
+\subsection{Weaknesses}
+\begin{itemize}
+  \item A diagonal step takes one time step, so patrons moving diagonally walk at about
+  \SI{1.7}{m/s} and diagonal routes are somewhat optimistic.
+  \item Only the first floor is modeled, and egress ends at the mezzanine doors rather
+  than the street.
+  \item All patrons are able-bodied and move at the same speed.
+  \item Patrons start moving immediately, with no pre-movement delay, so egress times
+  are lower bounds.
+  \item The fire is a stylized two-dimensional threat without smoke, heat or a hot gas
+  layer, and its spread rules come from a game rather than combustion physics.
+  \item Fires start among the audience at random, a worst case; real assembly fires
+  more often start on the stage or in service spaces.
+  \item The door positions are placeholders, and the friction and dynamic field rates
+  were chosen rather than fitted to data.
+\end{itemize}
+
+\section{Conclusion}
+
+\printbibliography[heading=bibintoc]
+
+\appendix
+\section{Code}
+All of the code we used for this project can be found at github.com/sidcmenon/cornell-mcm-26
+
+% Adjust to match exactly how your team used AI tools.
+We used Anthropic's Claude extensively throughout this project: to write and debug the
+simulation code.
+
+\end{document}
