@@ -51,11 +51,15 @@ BOX_X0 = 11.232                # first box row's legroom edge (aligned to a cell
 BOX_ROWS = 5
 BOX_TOP = 9.8                  # boxes occupy STAGE_Y <= y < BOX_TOP; walkway behind
 
-# Exits and access points: placeholders, no evacuation plans yet
+# Exits: placeholders, no evacuation plans yet
 DOOR_PHI = np.linspace(-50, 50, 9)          # 9 doors in the back wall, deg from the axis
 DOOR_WIDTH = 1.3
-ACCESS_X = [-10.3, -7.6, -4.6, 4.6, 7.6, 10.3]
-ACCESS_WIDTH = 1.0
+# The 6 orchestra -> mezzanine access points, measured on the seating chart (all are steps).
+# (x, y, width): x, y in metres in this file's coordinates, width in metres.
+# Same values as continuous/building.py.
+ACCESS_POINTS = [(-4.4, 16.4, 1.35), (4.4, 16.4, 1.35),   # tops of the two main aisles (4'-5")
+                 (-10.9, 9.6, 1.1), (10.9, 9.6, 1.1),     # stairs where the barrier turns straight
+                 (-10.9, 0.0, 1.05), (10.9, 0.0, 1.05)]   # steps by the stage up to the boxes
 
 # Seat counts (estimates from the chart)
 ORCH_ROWS = list("ABCDEFGHJKLMNPQRST")
@@ -208,11 +212,10 @@ def build_grid():
     for p in DOOR_PHI:
         grid[ring & (np.abs(np.radians(phi - p)) * OUTER_R <= DOOR_WIDTH / 2)] = EXIT
 
-    # Access points: openings in the barrier
-    rb = BARRIER_R + CELL / 2
-    for xa in ACCESS_X:
-        ya = LOGE_CENTER_Y + np.sqrt(rb ** 2 - xa ** 2)
-        grid[barrier & (np.hypot(X - xa, Y - ya) <= ACCESS_WIDTH / 2)] = ACCESS
+    # Access points: openings in the barrier at the measured positions
+    # (barrier cells within half the width of the point, and at least one cell)
+    for xa, ya, wa in ACCESS_POINTS:
+        grid[barrier & (np.hypot(X - xa, Y - ya) <= max(wa / 2, CELL))] = ACCESS
 
     return dict(grid=grid, occupied=occupied, agents=agents, xs=xs, ys=ys,
                 orch=orch, mezz=mezz, cell=CELL)

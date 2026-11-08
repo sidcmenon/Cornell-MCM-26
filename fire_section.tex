@@ -1,0 +1,339 @@
+% ======================================================================
+% fire_section.tex -- fire model, calibration, population, learning k_F
+% \input{fire_section} from main.tex. Needs: amsmath, siunitx, booktabs,
+% cleveref, and the assumption environment defined in main.tex.
+% Lines marked % UPDATE depend on the geometry and must be refreshed after
+% rerunning learn.py, refine.py, calibrate_spread.py and learn_kf.py.
+% ======================================================================
+
+\subsection{Fire Scenario}\label{sec:fire}
+
+We extend the evacuation model with a fire that starts at a random location in the
+hall and spreads while patrons evacuate. The fire enters the model in three ways: it
+makes cells impassable, it repels patrons through a fire proximity field, and it causes
+casualties among patrons who remain in burning cells too long. Throughout, one time step
+is $\Delta t = \SI{0.36}{s}$ and one cell is \SI{0.432}{m} square.
+
+\subsubsection{Fire Spread}\label{sec:fire_spread}
+
+We model fire with a stochastic cellular automaton adapted from the fire mechanics of
+Minecraft (Java Edition) \cite{minecraftfire}, restricted to two dimensions. Each cell
+$c$ carries an age $A_c \in \{-1, 0, 1, \dots, 15\}$, where $A_c = -1$ means $c$ is not
+burning, and a flag $B_c \in \{0, 1\}$ recording whether its fuel has been used up. A cell
+is \emph{flammable} if it is not a wall, not burning, and $B_c = 0$. Let $M(c)$ denote the
+eight cells surrounding $c$.
+
+At each time step the fire updates with probability $q$ (analogous to Minecraft's random
+block ticks); when it updates, every cell changes simultaneously:
+\begin{enumerate}
+  \item \emph{Spread.} A burning cell $c'$ ignites each flammable neighbor independently
+  with probability
+  \begin{equation}\label{eq:fire_spread}
+    p_{\text{ign}}(A_{c'}) = s \cdot \frac{\iota + 40 + 7\kappa}{100\,(A_{c'} + 30)},
+  \end{equation}
+  so a flammable cell $c$ catches fire with probability
+  \begin{equation}\label{eq:fire_ignite}
+    P_{\text{ign}}(c) = 1 - \prod_{\substack{c' \in M(c) \\ A_{c'} \ge 0}}
+    \bigl(1 - p_{\text{ign}}(A_{c'})\bigr).
+  \end{equation}
+  \item \emph{Consumption.} A burning cell uses up its fuel with probability
+  \begin{equation}\label{eq:fire_consume}
+    p_{\text{cons}} = \frac{\beta}{300}.
+  \end{equation}
+  \item \emph{Aging.} The age of a burning cell increases by one with probability $1/3$,
+  up to $15$.
+  \item \emph{Burnout.} A burning cell goes out if $A_c > 3$ and no neighbor is flammable,
+  or with probability $1/4$ once $A_c = 15$.
+\end{enumerate}
+A cell whose fire is consumed or burns out becomes ash: it is passable but no longer
+flammable. Newly ignited cells start at age $0$. Each simulation begins with a single
+ignition cell drawn uniformly at random from the non-wall, non-exit, unoccupied cells.
+
+The functional forms of \cref{eq:fire_spread,eq:fire_consume} and the aging and burnout
+rules follow Minecraft. Minecraft's fire is a block that sits next to separate fuel blocks
+and can spread several blocks upward; in two dimensions we let the fire occupy the fuel
+cell itself and spread within its eight-cell neighborhood. The constants are those of
+wool in Minecraft, ignite odds $\iota = 30$ and burn odds $\beta = 60$, at the normal
+difficulty level $\kappa = 2$ \cite{minecraftfire}, so a burning cell uses up its fuel
+with probability $0.2$ per update. The spread scale $s$ and update probability $q$ are
+calibrated in \cref{sec:fire_calibration}; Minecraft itself corresponds to $s = 1$.
+
+\subsubsection{Calibrating the Fire}\label{sec:fire_calibration}
+
+The spread scale $s$ and the update probability $q$ play different roles. The spread
+scale controls the \emph{shape} of the fire: whether an ignition becomes an established
+fire and how completely the fire front burns the hall. The update probability controls
+only its \emph{speed}: lowering $q$ stretches the fire's timeline by a factor $1/q$
+without changing how it spreads. We calibrate them separately.
+
+\paragraph{Shape.} For each candidate $s$ we ran the fire alone from $40$ random ignition
+sites, updating every step ($q = 1$). For each run we recorded the coverage $C(t)$, the
+fraction of non-wall cells that have caught fire by update $t$, and its final value
+$C_{\text{final}}$. We call a fire \emph{established} if $C_{\text{final}} \ge 0.5$, and
+define its \emph{engulfment time} as the first $t$ with
+$C(t) \ge 0.95\, C_{\text{final}}$. Because the front burns out behind itself and leaves
+unburnt pockets, $C_{\text{final}} < 1$ even for fires that sweep the hall.
+\Cref{tab:fire_calibration} shows the results. Below $s \approx 3$ almost no ignition
+becomes established; the fire behaves like a branching process near its critical point,
+so lowering $s$ makes fires fizzle rather than burn more slowly. We chose $s = 8$, for
+which about $95\%$ of ignitions become established fires that burn essentially the whole
+hall. This deliberately keeps a small share of fires that never take hold, as happens in
+reality. Larger $s$ pushes $p_{\text{ign}}$ toward $1$, where the front becomes a
+deterministic square determined by the grid rather than by the fire.
+
+\begin{table}[H]
+  \centering
+  \caption{Fire calibration with the fire updating every step ($q = 1$), $40$ random
+  ignitions per value of $s$. Coverage and engulfment updates are medians over
+  established fires; $q$ is the update probability giving a median engulfment time of
+  \SI{180}{s}.}
+  \label{tab:fire_calibration}
+  \begin{tabular}{rcccc}
+    \toprule
+    $s$ & established & coverage & engulfment (updates) & $q$ for \SI{180}{s} \\
+    \midrule
+    4  & $80\%$  & $0.90$ & $197$ & $0.394$ \\
+    6  & $88\%$  & $0.99$ & $107$ & $0.214$ \\
+    8  & $95\%$  & $1.00$ & $83$  & $0.166$ \\
+    12 & $100\%$ & $1.00$ & $64$  & $0.128$ \\
+    16 & $100\%$ & $1.00$ & $56$  & $0.113$ \\
+    \bottomrule
+  \end{tabular}
+  % UPDATE: rerun calibrate_spread.py with the measured access points
+\end{table}
+
+\paragraph{Speed.} With $s = 8$ fixed, an established fire takes a median of $83$ updates
+to engulf the hall, so an engulfment time $T_{\text{eng}}$ requires
+\begin{equation}\label{eq:fire_q}
+  q = \frac{83\,\Delta t}{T_{\text{eng}}} = 0.166 \cdot \frac{\SI{180}{s}}{T_{\text{eng}}}.
+\end{equation}
+We use $T_{\text{eng}} = \SI{6}{min}$, giving $q = 0.083$.
+
+The engulfment time is the least certain input of the fire model, and we treat it as a
+scenario parameter rather than a physical constant. For comparison, standard
+fire-protection practice models fire growth as a $t^2$ design fire, with heat release
+rate $Q(t) = \alpha t^2$; upholstered furniture is usually classed as a ``fast'' fire,
+$\alpha = \SI{0.0469}{kW/s^2}$ \cite{sfpe}. If the burning area is $Q/q''$ for a heat
+release rate per unit area $q''$, the flame front advances at
+$v_f = \sqrt{\alpha/(\pi q'')}$, only a few millimeters per second for upholstered
+seating. Flames that slow would not reach most patrons during an evacuation lasting about
+a minute. In real assembly fires, smoke rather than flame spread is the main hazard, and
+it fills a hall far faster than flames spread \cite{sfpe}. Our engulfment time should
+therefore be read as the time for conditions throughout the hall to become untenable,
+with the fire field standing in for flames and smoke together. We first used
+$T_{\text{eng}} = \SI{3}{min}$, which produced $13$--$16\%$ casualties; we regard that as
+implausibly severe and use \SI{6}{min}, reporting the \SI{3}{min} case as a sensitivity
+check.
+
+\subsubsection{Fire Proximity Field}\label{sec:fire_field}
+
+Patrons should react to the fire before they reach it. Let $r_{ij}$ be the number of steps
+from $(i, j)$ to the nearest burning cell through non-wall cells, using the eight-cell
+neighborhood. The fire proximity field is
+\begin{equation}\label{eq:fire_field}
+  F_{ij} = \max\bigl(0,\ \ell - r_{ij}\bigr), \qquad \ell = 8 \text{ cells}
+  \ (\approx \SI{3.5}{m}).
+\end{equation}
+Within $\ell$ cells of the fire, each step away from it lowers $F$ by exactly one, which is
+the same unit in which each step toward an exit lowers $SD$. A fire weight $k_F$ is then
+directly comparable to the exit weight $k_S$: $k_F / k_S$ is how much a patron values one
+step away from the fire relative to one step toward an exit. An exponentially decaying
+field would make $k_F$ depend on the distance at which it is evaluated and lose this
+interpretation. Beyond $\ell$ the fire has no direct influence on movement.
+
+\subsubsection{Movement and Casualties}\label{sec:fire_movement}
+
+With fire present, the transition probability of patron $a$ at $(i, j)$ is
+\begin{equation}\label{eq:trans_prob_fire}
+  p^{(a)}_{i',j'} = N^{(a)}_{i,j}
+  \exp\!\Bigl(k^{(a)}_D D_{i',j'} - k^{(a)}_S\, SD_{i',j'} - k^{(a)}_F F_{i',j'}\Bigr)
+  \,\mathbf{1}\bigl[(i', j') \text{ admissible}\bigr],
+\end{equation}
+over the eight neighboring cells and the patron's own cell. A target cell is admissible if
+it is walkable, unoccupied (by a patron or a casualty), and not burning. Because burning
+cells and casualties block paths, $SD$ is recomputed whenever either changes. Cells from
+which no exit can be reached are assigned one more than the largest finite distance, so
+patrons cut off from every exit still move away from danger.
+
+A patron standing in a burning cell accumulates one step of exposure per time step. When a
+patron's cumulative exposure reaches \SI{5}{s} ($14$ steps), the patron becomes a
+casualty and remains in the cell as an obstacle for the rest of the simulation; until
+then, the patron can still walk out of the fire. Patrons still inside at the time horizon
+$T = 2000$ steps (\SI{12}{min}) are counted as trapped. Both burned and trapped patrons
+count as casualties.
+
+\subsubsection{Heterogeneous Population}\label{sec:population}
+
+Each patron $a$ receives individual weights $(k^{(a)}_S, k^{(a)}_D, k^{(a)}_F)$. By
+\cref{as:optimal}, patrons behave approximately optimally under normal conditions, so we
+draw $(k_S, k_D)$ from a neighborhood of the optimum $x^* = (k_S^*, k_D^*)$ for a
+homogeneous crowd without fire. Near that optimum the mean exit time is well approximated
+by a quadratic,
+\begin{equation}\label{eq:quadratic}
+  J(x) \approx J^* + \tfrac{1}{2}(x - x^*)^\top H\, (x - x^*),
+\end{equation}
+which we fit by least squares to the refined grid of simulations, obtaining $x^*$ and the
+Hessian $H$. We draw
+\begin{equation}\label{eq:population}
+  \bigl(k^{(a)}_S, k^{(a)}_D\bigr) \sim \mathcal{N}\bigl(x^*,\ c\,H^{-1}\bigr),
+\end{equation}
+redrawing any sample with $k_S \le 0$. Two properties motivate this choice. First, patrons
+vary widely along directions in which $J$ is flat and narrowly along directions in which
+it is steep. Second, the spread has a direct meaning: if each patron's parameters were
+adopted by a whole crowd,
+\begin{equation}\label{eq:expected_loss}
+  \mathbb{E}\bigl[J(x^{(a)}) - J^*\bigr]
+  \approx \tfrac{1}{2}\operatorname{tr}\bigl(H \cdot c\,H^{-1}\bigr) = c,
+\end{equation}
+so $c$ is the average number of time steps lost per patron. Equivalently,
+\cref{eq:population} is the quadratic approximation of a Boltzmann distribution
+$p(x) \propto \exp\bigl(-(J(x) - J^*)/c\bigr)$, in which cheaper behaviors are more common
+and $c$ acts as a temperature. We use $c = 1$. With the fitted
+$x^* = (1.89, -3.02)$ and $H$, this gives % UPDATE
+$\operatorname{sd}(k_S) \approx 0.35$, $\operatorname{sd}(k_D) \approx 2.45$ and
+$\operatorname{corr}(k_S, k_D) \approx -0.76$: patrons agree closely on how strongly they
+head for an exit but differ widely in how they respond to the crowd. % UPDATE
+
+The fire weight must be positive, so we draw it from a lognormal distribution,
+independently of $(k_S, k_D)$:
+\begin{equation}\label{eq:kF}
+  k^{(a)}_F = m\, e^{\sigma_F z_a}, \qquad z_a \sim \mathcal{N}(0, 1),
+\end{equation}
+with median $m$ and $\sigma_F = 0.5$, so about two thirds of patrons have $k_F$ within a
+factor $e^{0.5} \approx 1.65$ of $m$. The median $m$ is learned in \cref{sec:learn_kF}.
+
+\subsubsection{Learning the Fire Weight}\label{sec:learn_kF}
+
+Consistent with \cref{as:consistent}, we hold the distribution of $(k_S, k_D)$ fixed and
+learn only the median fire weight $m$. For one simulation, let $C$ be the casualty
+fraction and $\bar t$ the mean exit time of survivors. We minimize
+\begin{equation}\label{eq:fire_objective}
+  \mathcal{J}(m) = \mathbb{E}\left[\, C + \lambda\, \frac{\bar t}{t_{\text{ref}}} \right],
+  \qquad \lambda = 0.1,\ t_{\text{ref}} = 150 \text{ steps},
+\end{equation}
+where the expectation is over the ignition site, the population draw, the fire, and the
+patrons' random choices; $t_{\text{ref}}$ is the optimal mean exit time without fire. With
+these values one percent of casualties counts as much as $15$ steps of survivor exit time,
+so casualties are the primary objective and exit time breaks near-ties.
+
+We estimated $\mathcal{J}(m)$ for $m \in \{0, 0.5, 1, 2, 3, 5, 8, 12, 20\}$ with $R = 50$
+replicates per value. Each replicate fixes an ignition site, a population draw (including
+the standard normals $z_a$ in \cref{eq:kF}), a random stream for the patrons and a separate
+random stream for the fire. These are shared across all values of $m$ (common random
+numbers), and since the fire does not depend on the patrons, each replicate's fire evolves
+identically for every $m$. Differences between values of $m$ are therefore paired
+comparisons on identical scenarios.
+
+\paragraph{Results.} \Cref{tab:kF} shows the results. % UPDATE all numbers below
+Moderate fire avoidance roughly halves casualties: raising the median fire weight from
+$m = 0$ to $m = 1$ lowers the casualty fraction from $2.3\%$ to $1.3\%$ (about $13$ of
+$1010$ patrons). Strong avoidance is counterproductive: casualties rise to $3.1\%$ at
+$m = 5$ and $3.8\%$ at $m = 20$, about three times the optimum, and the share of patrons
+trapped with no route to an exit grows with $m$. Patrons who put distance from the fire
+ahead of progress toward an exit are cut off or caught in worse positions. Fire avoidance
+also delays survivors, whose mean exit time rises from $151$ steps at $m = 0$ to $180$ at
+$m = 20$. $\mathcal{J}$ is minimized at $m = 1$, and no other value is within two paired
+standard errors of it. Relative to $k_S^* \approx 1.9$, the best response weights a step
+away from the fire about half as much as a step toward an exit.
+
+\begin{table}[H]
+  \centering
+  \caption{Learning the median fire weight $m$ ($T_{\text{eng}} = \SI{6}{min}$, $50$
+  replicates). Means over replicates; casualties are burned plus trapped, exit time is the
+  survivors' mean in steps.}
+  \label{tab:kF}
+  % UPDATE: rerun learn_kf.py with the measured access points
+  \begin{tabular}{rccccc}
+    \toprule
+    $m$ & $\mathcal{J}$ & casualties & burned & trapped & exit time \\
+    \midrule
+    0    & $0.124$ & $2.29\%$ & $1.93\%$ & $0.36\%$ & $151.1$ \\
+    0.5  & $0.119$ & $1.66\%$ & $1.48\%$ & $0.18\%$ & $153.3$ \\
+    1    & $0.116$ & $1.29\%$ & $1.08\%$ & $0.21\%$ & $155.0$ \\
+    2    & $0.127$ & $1.87\%$ & $1.52\%$ & $0.35\%$ & $162.0$ \\
+    3    & $0.135$ & $2.30\%$ & $1.88\%$ & $0.43\%$ & $168.0$ \\
+    5    & $0.148$ & $3.09\%$ & $2.55\%$ & $0.54\%$ & $175.2$ \\
+    8    & $0.153$ & $3.43\%$ & $2.84\%$ & $0.59\%$ & $177.7$ \\
+    12   & $0.157$ & $3.79\%$ & $3.14\%$ & $0.65\%$ & $179.0$ \\
+    20   & $0.159$ & $3.84\%$ & $3.16\%$ & $0.68\%$ & $180.1$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Sensitivity.} The optimum is robust to the fire model. With a faster fire
+($T_{\text{eng}} = \SI{3}{min}$) and casualties occurring on first contact with the fire,
+casualties are far higher ($13$--$16\%$), but $\mathcal{J}$ is again minimized at $m = 1$.
+% UPDATE if rerun
+
+\subsubsection{Constants}\label{sec:fire_constants}
+
+\Cref{tab:fire_constants} lists every constant in the fire model and how it was determined.
+
+\begin{table}[H]
+  \centering
+  \caption{Constants of the fire model.}
+  \label{tab:fire_constants}
+  \small
+  \begin{tabular}{llll}
+    \toprule
+    Symbol & Meaning & Value & Source \\
+    \midrule
+    $\Delta t$ & time step & \SI{0.36}{s} & walking speed, cell size \\
+    $\iota$ & ignite odds of fuel & $30$ & Minecraft (wool) \\
+    $\beta$ & burn odds of fuel & $60$ & Minecraft (wool) \\
+    $\kappa$ & difficulty level & $2$ & Minecraft (normal) \\
+    $s$ & spread scale & $8$ & calibrated: $\approx 95\%$ of ignitions establish \\
+    $T_{\text{eng}}$ & median engulfment time & \SI{6}{min} & assumed; \SI{3}{min} as sensitivity \\
+    $q$ & fire update probability & $0.083$ & calibrated from $s$ and $T_{\text{eng}}$, \cref{eq:fire_q} \\
+    $\ell$ & fire sensing range & $8$ cells (\SI{3.5}{m}) & assumed \\
+    -- & exposure before casualty & \SI{5}{s} ($14$ steps) & assumed \\
+    $T$ & time horizon & $2000$ steps & longer than any evacuation \\
+    $x^*$ & center of $(k_S, k_D)$ & $(1.89, -3.02)$ & learned without fire % UPDATE
+    \\
+    $H$ & curvature of $J$ at $x^*$ & -- & fitted, \cref{eq:quadratic} \\
+    $c$ & population spread & $1$ step & assumed \\
+    $m$ & median fire weight & $1$ & learned, \cref{sec:learn_kF} % UPDATE
+    \\
+    $\sigma_F$ & spread of $k_F$ & $0.5$ & assumed \\
+    $\lambda,\ t_{\text{ref}}$ & objective weights & $0.1,\ 150$ steps & chosen, \cref{eq:fire_objective} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Fire Assumptions}\label{sec:fire_assumptions}
+
+\begin{assumption}
+Every non-wall cell (seats, legroom, aisles, access points and exits) is equally
+flammable, with the properties of wool in Minecraft; walls are stone and never burn.
+\end{assumption}
+\begin{assumption}
+Fire spreads only between adjacent cells, and its spread does not depend on the patrons.
+\end{assumption}
+\begin{assumption}
+The fire field represents untenable conditions (flames and smoke together), which spread
+through the hall in a median of \SI{6}{min}.
+\end{assumption}
+\begin{assumption}
+Patrons sense the fire within \SI{3.5}{m} and react to it in proportion to how many steps
+away from it a move takes them.
+\end{assumption}
+\begin{assumption}
+A patron who spends \SI{5}{s} in total in burning cells is incapacitated and becomes an
+obstacle to others.
+\end{assumption}
+\begin{assumption}
+Patrons' exit-seeking and crowd behavior, $(k_S, k_D)$, are the same as without fire
+(\cref{as:consistent}); only their response to the fire, $k_F$, is new.
+\end{assumption}
+
+\subsubsection{Limitations}\label{sec:fire_limitations}
+
+The fire model is two-dimensional and does not represent smoke, heat or the hot gas layer
+under the ceiling, which cause most deaths in real assembly fires; the engulfment time is
+a single stylized timescale for all of these. The Minecraft spread rules are not derived
+from combustion physics, and their constants follow the game rather than measurements of
+theater seating. Patrons respond only to fire within \SI{3.5}{m}; an alarm, the sight of
+smoke across the hall or staff instructions would alert them sooner. Casualties are
+binary, with no injuries or reduced walking speed. Finally, the optimal $(k_S, k_D)$ were
+learned for a homogeneous crowd without fire, so the population in
+\cref{eq:population} is near-optimal in that sense, not necessarily under fire.

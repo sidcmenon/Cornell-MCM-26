@@ -121,8 +121,8 @@ class EvacSim:
         door_cap: max agents entering one door per step (None = unlimited).
         door_q: probability a door admits anyone in a given step, so mean door
             throughput is door_q * door_cap per step. With 0.432 m cells and a
-            ~0.32 s step, door_q = 0.6, door_cap = 1 gives ~1.9 people/s through a
-            1.3 m door (~1.4 people/m/s), in the measured bottleneck range.
+            0.36 s step, door_q = 0.6, door_cap = 1 gives ~1.7 people/s through a
+            1.3 m door (~1.3 people/m/s), in the measured bottleneck range.
         static: precomputed build_static(...) output (pass it when sweeping k)."""
         if winner not in ("weighted", "uniform"):
             raise ValueError("winner must be 'weighted' or 'uniform'")

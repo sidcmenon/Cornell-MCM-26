@@ -29,7 +29,7 @@ CONFIG = dict(
     base_seed=12345,
 )
 K_S = np.linspace(0.0, 10.0, 11)
-K_D = np.linspace(-5.0, 5.0, 11)    # negative k_D = avoid trafficked cells
+K_D = np.linspace(-8.0, 4.0, 13)    # negative k_D = avoid trafficked cells
 
 _S = {}
 
