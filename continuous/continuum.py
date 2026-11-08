@@ -12,7 +12,9 @@ The crowd is a density rho(x, t) in people/m^2 that obeys
 Crowding enters in four places:
   1. Speed falls with density, separately for each cell type (Greenshields):
          q(rho) = vf * rho * (1 - rho/RHO_MAX),   vf = V_FREE * T(type) * (1 - merge loss)
-     T is the traversability field from the CA (aisle 1.0, legroom 0.8, seat 0.1).
+     T is a per-type walking-speed factor (aisle 1.0, legroom 0.8, seat 0.1). This is
+     not the CA's binary traversability field: people start out standing on seat
+     cells here, so seats must stay slow but passable.
   2. Flow between two cells is min(demand of the sender, supply of the receiver)
      (Godunov / cell-transmission form). A packed aisle has little supply, so it is
      hard to enter; a packed legroom row has its demand capped, so it empties slowly.
@@ -44,8 +46,7 @@ from scipy import ndimage
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bailey_grid import ACCESS, AISLE, EXIT, LEGROOM, SEAT, WALL     # noqa: E402
-from traversability_field import TRAVERSABILITY, traversability_field  # noqa: E402
+from bailey_grid import ACCESS, AISLE, EXIT, LEGROOM, SEAT, TYPE_NAMES, WALL  # noqa: E402
 from building import BARRICADES, OUT, build_building                   # noqa: E402
 
 # ----------------------------------------------------------------------------
@@ -62,12 +63,18 @@ PHI_EVERY = 1.0     # s, how often people re-plan (recompute phi and merge loss)
 T_END = 900.0       # s, give up after this
 DONE = 0.5          # people left inside when we call it evacuated
 
-# access points are slow because of their capacity (STAIR_FLOW), not their walking speed
-T_VALUES = {**TRAVERSABILITY, ACCESS: 1.0}
+# walking-speed factor by cell type; access points are slow because of their capacity
+# (STAIR_FLOW), not their walking speed
+T_VALUES = {WALL: 0.0, AISLE: 1.0, LEGROOM: 0.8, SEAT: 0.1, ACCESS: 1.0, EXIT: 1.0}
 
 RHO_C = RHO_MAX / 2                       # critical density (max flow)
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]  # (dy, dx): east, west, north, south
 SQ = np.ones((3, 3), bool)
+
+
+def speed_factor(grid):
+    lut = np.array([T_VALUES[t] for t in range(len(TYPE_NAMES))])
+    return lut[grid]
 
 
 def nb(a, dy, dx):
@@ -140,7 +147,7 @@ def simulate(barricades="none", dt=None, jam_drop=JAM_DROP, merge_loss=MERGE_LOS
     assert (grid[[0, -1], :] == WALL).all() and (grid[:, [0, -1]] == WALL).all()
     dt = dt or 0.5 * cell / V_FREE                     # CFL condition
 
-    vf0 = V_FREE * traversability_field(np.minimum(grid, EXIT), T_VALUES)  # doors/outside = 1
+    vf0 = V_FREE * speed_factor(np.minimum(grid, EXIT))  # doors/outside = 1
     out_ = grid == OUT
     fronts = opening_fronts(b, vf0)
 

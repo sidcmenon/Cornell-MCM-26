@@ -18,7 +18,7 @@ python continuum.py --dt-check  # also repeats the baseline at half the time ste
 ## How crowding is modeled
 | Effect | How |
 |---|---|
-| Packed space is slower | v = V_FREE · T(cell type) · (1 − ρ/RHO_MAX), T from `../traversability_field.py` |
+| Packed space is slower | v = V_FREE · T(cell type) · (1 − ρ/RHO_MAX), T = per-type speed factor in `continuum.py` (aisle 1, legroom 0.8, seat 0.1; not the CA's binary traversability field) |
 | Packed aisle hard to enter / packed legroom hard to leave | Flow between cells = min(sender's demand, receiver's supply) |
 | Doors and access-point steps | Capacity = DOOR_FLOW (1.3) or STAIR_FLOW (1.0) people/(m·s) × width, reduced by up to JAM_DROP when the crowd in front is packed and squeezing in (clogging) |
 | Merging / crossing streams | Walking speed drops by up to MERGE_LOSS where streams converge from different directions |

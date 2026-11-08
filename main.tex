@@ -126,14 +126,10 @@ We then assign one of six types to each grid cell: chair, legroom, aisle, wall, 
 
 $$SD_{ij} = \text{ Need to explain this}$$
 $$ST_{ij} = \begin{cases}
-    T_{\text{chair}} \text{ if cell (i,j) is type chair}\\
-    T_{\text{legroom}} \text{ if cell (i,j) is type legroom}\\
-    T_{\text{aisle}} \text{ if cell (i,j) is type aisle}\\
-    T_{\text{wall}} \text{ if cell (i,j) is type wall}\\
-    T_{\text{access}} \text{ if cell (i,j) is type access}
-    T_{\text{exit}} \text{ if cell (i,j) is type exit}
+    1 & \text{if cell } (i,j) \text{ is of type access, aisle, legroom or exit,}\\
+    0 & \text{if cell } (i,j) \text{ is of type chair or wall.}
 \end{cases}$$
-The idea here is that $SD$ incorporates information about proximity to the nearest exit or access point, and that $ST$ incorporates information about how difficult it is to traverse across different types of grid cells.
+The idea here is that $SD$ incorporates information about proximity to the nearest exit or access point, and that $ST$ records which grid cells can be walked through at all.
 
 
 Next, we define a dynamic field $D$ as follows. During a given time step, if an automata (patron) exits cell $(i,j)$ we increment $D_{ij}$ by one unit. Then, after every automata has attempted to move. With probability $\delta$, a cell value $D_{ij}$ ``decays"
