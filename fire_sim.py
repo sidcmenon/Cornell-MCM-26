@@ -10,8 +10,9 @@ Each agent a has its own (k_S, k_D, k_F) and scores its 9 Moore moves by
      so within ell cells each step away from the fire lowers F by exactly 1 (same unit as d)
 
 Per time step:
-  1. fire tick (every fire_every steps); agents on newly burning cells become casualties
-     and stay in their cell as obstacles
+  1. fire tick (with probability fire_tick_prob); patrons standing in a burning cell gain
+     one step of exposure, and after burn_steps cumulative steps they become casualties
+     and stay in their cell as obstacles (until then they can walk out of the fire)
   2. recompute d and F if the burning set or casualties changed
   3. agents choose moves; blocked: walls, seats (entering), occupied cells (agents or
      casualties), burning cells, wall corner-cuts
@@ -87,9 +88,17 @@ def fire_proximity(burning, passable, ell):
 class FireEvacSim:
     def __init__(self, grid, mu=0.3, alpha=0.3, delta=0.3, door_cap=1, door_q=0.6,
                  winner="weighted", cut_corners=False, include_seats=False,
-                 ell=8, fire_every=1, fire_kwargs=None):
-        """ell: fire sensing range in cells. fire_every: steps per fire tick.
-        fire_kwargs: passed to Fire (ignite_odds, burn_odds, difficulty, spread_scale...)."""
+                 ell=8, fire_tick_prob=1.0, fire_kwargs=None, burn_steps=14):
+        """ell: fire sensing range in cells. fire_tick_prob: probability the fire updates
+        in a given step (Minecraft-style random tick); sets fire speed without changing
+        how it spreads. fire_kwargs: passed to Fire (ignite_odds, burn_odds, difficulty,
+        spread_scale...). burn_steps: cumulative steps a patron can spend in burning
+        cells before becoming a casualty (14 steps ~ 5 s at 0.36 s per step)."""
+        if burn_steps < 1:
+            raise ValueError("burn_steps must be at least 1")
+        self.burn_steps = int(burn_steps)
+        if not 0.0 < fire_tick_prob <= 1.0:
+            raise ValueError("fire_tick_prob must lie in (0, 1]")
         self.grid = grid
         self.passable = np.isin(grid, PASSABLE)
         self.exits = grid == EXIT
@@ -97,15 +106,21 @@ class FireEvacSim:
         self.ok, self.walk = static_moves(grid, cut_corners)
         self.door_id = door_labels(self.exits)
         self.mu, self.door_cap, self.door_q, self.winner = mu, door_cap, door_q, winner
-        self.ell, self.fire_every = ell, fire_every
+        self.ell, self.fire_tick_prob = ell, fire_tick_prob
         self.field = DynamicField(grid, alpha, delta, include_seats)
         self.fire = Fire(grid, **(fire_kwargs or {}))
 
-    def run(self, start, k_S, k_D, k_F, ignition, T, rng, head_start=0, record=False):
+    def run(self, start, k_S, k_D, k_F, ignition, T, rng, head_start=0, record=False,
+            fire_rng=None):
         """start: (N, 2) initial cells. k_S, k_D, k_F: (N,) per-agent weights.
         ignition: iterable of (iy, ix) cells set alight at t = 0.
+        rng: random stream for the agents. fire_rng: separate stream for the fire, so the
+        fire evolves identically whatever the agents do (pass one when comparing
+        behaviours under common random numbers; defaults to rng).
         head_start: fire ticks before anyone moves.
         Returns dict with exit_t (N,), outcome (N,), and optional history."""
+        if fire_rng is None:
+            fire_rng = rng
         H, W = self.grid.shape
         pos = np.array(start, dtype=int)
         N = len(pos)
@@ -116,17 +131,22 @@ class FireEvacSim:
         occ = np.zeros((H, W), bool)
         occ[pos[:, 0], pos[:, 1]] = True
         body = np.zeros((H, W), bool)
+        exposure = np.zeros(N, int)          # cumulative steps spent in burning cells
         self.field.reset()
         fire = self.fire
         fire.reset()
         fire.ignite(ignition)
         for _ in range(head_start):
-            fire.step(rng)
+            fire.step(fire_rng)
         hist = [] if record else None
 
         def burn_check():
+            """Called once per step: patrons standing in a burning cell gain one step of
+            exposure; those reaching burn_steps become casualties."""
             idx = np.nonzero(alive)[0]
-            hit = idx[fire.burning[pos[idx, 0], pos[idx, 1]]]
+            in_fire = idx[fire.burning[pos[idx, 0], pos[idx, 1]]]
+            exposure[in_fire] += 1
+            hit = in_fire[exposure[in_fire] >= self.burn_steps]
             if hit.size:
                 alive[hit] = False
                 outcome[hit] = BURNED
@@ -146,8 +166,8 @@ class FireEvacSim:
 
         for t in range(T):
             changed = False
-            if t % self.fire_every == 0:
-                changed = fire.step(rng)
+            if fire_rng.random() < self.fire_tick_prob:
+                changed = fire.step(fire_rng)
             changed |= burn_check()
             if changed:
                 d_safe, F = fields()
